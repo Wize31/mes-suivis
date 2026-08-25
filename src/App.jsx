@@ -1365,6 +1365,7 @@ function StatCard({ module, rows, totalDays, trackedDays, chartMode }) {
     module.type === "scale"
       ? Array.from({ length: 11 }, (_, i) => ({
           label: `${i}/10`,
+          definition: nearestAnchor(module.anchors, i).label,
           count: values.filter((v) => v === i).length,
         }))
       : module.options
@@ -1418,6 +1419,9 @@ function StatCard({ module, rows, totalDays, trackedDays, chartMode }) {
                 />
               )}
               {bucket.label}
+              {bucket.definition && (
+                <small className="stat-definition">{bucket.definition}</small>
+              )}
             </span>
             <strong>
               {bucket.count}/{totalDays} ·{" "}
