@@ -1921,6 +1921,14 @@ function Settings({ project, onProject, onClose, onDelete }) {
             onChange={(e) => onProject({ emoji: e.target.value })}
             maxLength="2"
           />
+          <input
+            className="color-input"
+            type="color"
+            value={project.color}
+            onChange={(e) => onProject({ color: e.target.value })}
+            aria-label="Couleur du projet"
+            title="Couleur du projet"
+          />
         </label>
         <div className="settings-label">Tes suivis</div>
         {project.modules.map((m) => (
@@ -2397,6 +2405,7 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
 function ProjectModal({ onClose, onSave }) {
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("✨");
+  const [color, setColor] = useState(palette[4]);
   return (
     <div className="modal-backdrop">
       <div className="modal">
@@ -2409,10 +2418,19 @@ function ProjectModal({ onClose, onSave }) {
             maxLength="2"
           />
           <input
+            className="name-input"
             autoFocus
             placeholder="Nom du projet"
             value={name}
             onChange={(e) => setName(e.target.value)}
+          />
+          <input
+            className="color-input"
+            type="color"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+            aria-label="Couleur du projet"
+            title="Couleur du projet"
           />
         </div>
         <div className="modal-actions">
@@ -2421,7 +2439,7 @@ function ProjectModal({ onClose, onSave }) {
             className="done"
             disabled={!name.trim()}
             onClick={() =>
-              onSave({ name: name.trim(), emoji, color: palette[4] })
+              onSave({ name: name.trim(), emoji, color })
             }
           >
             Créer
