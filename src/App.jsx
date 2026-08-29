@@ -2089,9 +2089,23 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
   const [draggingOptionId, setDraggingOptionId] = useState(null);
   const optionPressTimer = useRef(null);
   const moduleHistory = useRef([]);
+  const [maxDraft, setMaxDraft] = useState(String(module.max || 5));
+  useEffect(() => {
+    setMaxDraft(String(module.max || 5));
+  }, [module.id]);
   const patch = (p) => {
     moduleHistory.current.push(module);
     onChange({ ...module, ...p });
+  };
+  const commitMax = () => {
+    const max = Math.min(10, Math.max(2, Number(maxDraft) || module.max || 5));
+    setMaxDraft(String(max));
+    const levels = Array.from({ length: max }, (_, i) => ({
+      value: i + 1,
+      label: module.levels?.[i]?.label || "",
+      color: module.levels?.[i]?.color || palette[i % palette.length],
+    }));
+    patch({ max, levels });
   };
   const undoLastChange = () => {
     if (!moduleHistory.current.length) return;
@@ -2184,15 +2198,14 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
               type="number"
               min="2"
               max="10"
-              value={module.max || 5}
-              onChange={(e) => {
-                const max = Math.min(10, Math.max(2, Number(e.target.value) || 5));
-                const levels = Array.from({ length: max }, (_, i) => ({
-                  value: i + 1,
-                  label: module.levels?.[i]?.label || "",
-                  color: module.levels?.[i]?.color || palette[i % palette.length],
-                }));
-                patch({ max, levels });
+              value={maxDraft}
+              onChange={(e) => setMaxDraft(e.target.value)}
+              onBlur={commitMax}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  commitMax();
+                  e.target.blur();
+                }
               }}
             />
           </label>
