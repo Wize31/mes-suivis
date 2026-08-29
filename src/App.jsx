@@ -361,7 +361,7 @@ function Home({ userName, projects, onOpen, onCreate, onDelete }) {
       <header className="home-head">
         <div>
           <h1>
-            Qu'est-ce qu'on suit{userName ? ` « ${userName} »` : ""}
+            Qu'est-ce qu'on suit{userName ? ` ${userName}` : ""}
             <br />
             <em>aujourd'hui ?</em>
           </h1>
