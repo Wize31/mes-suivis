@@ -7,6 +7,24 @@ html.dark{filter:invert(1) hue-rotate(180deg);background:#fffaf5}
 html.dark img,html.dark input[type=color]{filter:invert(1) hue-rotate(180deg)}
 html.dark h1,html.dark h2,html.dark h3{filter:invert(1) hue-rotate(180deg);color:#be817d}
 html.dark small,html.dark p{filter:invert(1) hue-rotate(180deg);color:#f5f0ec}
+html.dark .project-tile:before,
+html.dark .tracker-dot,
+html.dark .stat-card h3 i,
+html.dark .option-list span,
+html.dark .option-list button.selected,
+html.dark .rating-icon.filled,
+html.dark .scale-editor input[type=range],
+html.dark .stat-pie,
+html.dark .stat-color-key,
+html.dark .number-stat-legend i,
+html.dark .annual-row i,
+html.dark .stat-bar i,
+html.dark .numeric-comparison-track i,
+html.dark .category-comparison-track i,
+html.dark .year-grid i,
+html.dark .filter-options span,
+html.dark .summary-table span,
+html.dark .day-results i{filter:invert(1) hue-rotate(180deg)}
 html.dark .period-tabs button:not(.active),html.dark .history-nav strong{filter:invert(1) hue-rotate(180deg);color:#f5f0ec}
 .dark-mode-toggle{display:flex;justify-content:space-between;align-items:center;color:#927c75;font-size:13px;margin:18px 0 6px}.dark-mode-toggle input{width:38px;height:22px;accent-color:#a96f6a}
 .home-settings{margin-left:auto;color:#9e6e69}
