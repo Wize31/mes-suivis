@@ -108,13 +108,23 @@ const starterProject = {
   name: "Premier projet",
   emoji: "🌷",
   color: "#d98eaf",
+  createdAt: new Date().toISOString(),
   modules: starterModules,
+};
+const earliestEntryDate = (project, entries) => {
+  const dates = Object.keys(entries || {})
+    .filter((key) => key.startsWith(`${project.id}:`) && Object.keys(entries[key]).length)
+    .map((key) => key.split(":")[1])
+    .sort();
+  return dates.length ? new Date(`${dates[0]}T12:00:00`).toISOString() : new Date().toISOString();
 };
 const normalizeState = (raw) => {
   const next = raw || { projects: [starterProject], entries: {}, savedDays: {} };
   next.savedDays = next.savedDays || {};
+  next.entries = next.entries || {};
   next.projects = (next.projects || []).map((project) => ({
     ...project,
+    createdAt: project.createdAt || earliestEntryDate(project, next.entries),
     modules: (project.modules || []).map((module) => {
       if (module.title !== "Travail" || module.type !== "number") return module;
       return {
@@ -285,9 +295,10 @@ function App() {
     return (
       <Home
         projects={state.projects}
+        entries={state.entries}
         onOpen={setProjectId}
         onCreate={(p) => {
-          const next = { ...p, id: uid("project"), modules: [] };
+          const next = { ...p, id: uid("project"), modules: [], createdAt: new Date().toISOString() };
           setState((s) => ({ ...s, projects: [...s.projects, next] }));
         }}
         onDelete={(id) =>
@@ -295,6 +306,13 @@ function App() {
             ...s,
             projects: s.projects.filter((p) => p.id !== id),
           }))
+        }
+        onReorder={(projects) =>
+          setState((s) => {
+            const next = { ...s, projects };
+            persistState(next);
+            return next;
+          })
         }
       />
     );
@@ -324,8 +342,48 @@ function App() {
   );
 }
 
-function Home({ projects, onOpen, onCreate, onDelete }) {
+const lastEntryDate = (project, entries) => {
+  const dates = Object.keys(entries || {})
+    .filter((key) => key.startsWith(`${project.id}:`) && Object.keys(entries[key]).length)
+    .map((key) => key.split(":")[1])
+    .sort();
+  return dates.length ? dates[dates.length - 1] : null;
+};
+const shortDate = (isoOrKey) =>
+  new Intl.DateTimeFormat("fr-CA", { day: "numeric", month: "short", year: "numeric" }).format(
+    isoOrKey.includes("T") ? new Date(isoOrKey) : new Date(`${isoOrKey}T12:00:00`),
+  );
+function Home({ projects, entries, onOpen, onCreate, onDelete, onReorder }) {
   const [modal, setModal] = useState(false);
+  const [draggingId, setDraggingId] = useState(null);
+  const pressTimer = useRef(null);
+  const stopDragging = () => {
+    clearTimeout(pressTimer.current);
+    pressTimer.current = null;
+    setDraggingId(null);
+  };
+  const startDragging = (event, id) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    clearTimeout(pressTimer.current);
+    pressTimer.current = setTimeout(() => setDraggingId(id), 250);
+  };
+  const moveDraggedProject = (event) => {
+    if (!draggingId) return;
+    event.preventDefault();
+    const target = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest(".project-tile[data-project-id]");
+    const targetId = target?.dataset.projectId;
+    if (!targetId || targetId === draggingId) return;
+    const fromIndex = projects.findIndex((project) => project.id === draggingId);
+    const toIndex = projects.findIndex((project) => project.id === targetId);
+    if (fromIndex < 0 || toIndex < 0) return;
+    const next = [...projects];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    onReorder(next);
+  };
   return (
     <main className="home page-width">
       <div className="brand-mark">
@@ -361,29 +419,49 @@ function Home({ projects, onOpen, onCreate, onDelete }) {
           </span>
         </div>
         <div className="project-grid">
-          {projects.map((p) => (
-            <article
-              className="project-tile"
-              style={{ "--accent": p.color }}
-              key={p.id}
-            >
-              <button className="tile-main" onClick={() => onOpen(p.id)}>
-                <span className="tile-emoji">{p.emoji}</span>
-                <strong>{p.name}</strong>
-                <small>{p.modules.length} suivis configurés</small>
-              </button>
-              <button
-                className="tile-delete"
-                aria-label={`Supprimer ${p.name}`}
-                onClick={() => {
-                  if (confirm(`Supprimer le projet « ${p.name} » ?`))
-                    onDelete(p.id);
-                }}
+          {projects.map((p) => {
+            const lastEntry = lastEntryDate(p, entries);
+            return (
+              <article
+                className={`project-tile ${draggingId === p.id ? "is-dragging" : ""}`}
+                style={{ "--accent": p.color }}
+                data-project-id={p.id}
+                key={p.id}
               >
-                <Trash2 size={15} />
-              </button>
-            </article>
-          ))}
+                <span
+                  className="tile-drag-handle"
+                  onPointerDown={(event) => startDragging(event, p.id)}
+                  onPointerMove={moveDraggedProject}
+                  onPointerUp={stopDragging}
+                  onPointerCancel={stopDragging}
+                  aria-label={`Déplacer ${p.name}`}
+                  title="Maintenir et faire glisser"
+                >
+                  <GripVertical size={15} aria-hidden="true" />
+                </span>
+                <button className="tile-main" onClick={() => onOpen(p.id)}>
+                  <span className="tile-emoji">{p.emoji}</span>
+                  <strong>{p.name}</strong>
+                  <small>{p.modules.length} suivis configurés</small>
+                  <small className="tile-dates">
+                    Créé le {shortDate(p.createdAt || new Date().toISOString())}
+                    <br />
+                    {lastEntry ? `Dernière entrée le ${shortDate(lastEntry)}` : "Aucune entrée"}
+                  </small>
+                </button>
+                <button
+                  className="tile-delete"
+                  aria-label={`Supprimer ${p.name}`}
+                  onClick={() => {
+                    if (confirm(`Supprimer le projet « ${p.name} » ?`))
+                      onDelete(p.id);
+                  }}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </article>
+            );
+          })}
           <button className="new-project" onClick={() => setModal(true)}>
             <span>
               <Plus />
