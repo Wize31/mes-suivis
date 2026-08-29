@@ -3,7 +3,10 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 .project-fields{display:grid;row-gap:14px;margin-bottom:29px}
 .project-fields .project-edit{display:grid;grid-template-columns:122px 1fr;align-items:center;column-gap:10px}
 .project-fields .project-edit .field-line{display:flex;border-bottom:1px solid #decec7;padding-bottom:8px}
-.project-fields .project-edit .field-line input{border-bottom:0!important;width:100%!important;flex:1 1 auto!important}
+.project-fields .project-edit .field-line input{border-bottom:0!important}
+.project-fields .field-line input:not(.emoji-input):not(.color-input){width:100%;font-size:16px}
+.project-fields .emoji-input{flex:0 0 45px!important;width:45px!important}
+.project-fields .color-input{flex:0 0 45px!important;width:45px!important;height:32px}
 .save-tracking{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:18px 0 8px;padding:13px 18px;background:#a96f6a;color:white;font-weight:700}.save-tracking.is-saved{background:#72b99a}.save-tracking svg{stroke-width:3}
 .module-setting-row{display:flex;align-items:center;border-bottom:1px solid #e9ddd7}.module-setting-row.is-dragging{opacity:.55;background:#fff4ee}.module-drag-handle{display:flex;align-items:center;padding:15px 4px;color:#b59d95;touch-action:none;user-select:none;cursor:grab}.module-setting-main{display:flex;align-items:center;gap:10px;flex:1;min-width:0;padding:15px 5px;text-align:left}.module-setting-main strong{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.module-setting-main small{color:#a08c85}
 .module-option-row.is-dragging{opacity:.55;background:#fff4ee}.module-option-drag-handle{display:flex;align-items:center;flex:0 0 auto;padding:7px 1px;color:#b59d95;touch-action:none;user-select:none;cursor:grab}
