@@ -734,7 +734,7 @@ function ValueEditor({ module, value, onChange }) {
           <button
             key={level}
             className={`rating-icon ${level <= n ? "filled" : ""}`}
-            style={{ "--rating-color": level <= n ? activeColor : undefined }}
+            style={{ "--rating-color": level <= n ? module.levels?.[level - 1]?.color || activeColor : undefined }}
             onClick={() => onChange(n === level ? 0 : level)}
             aria-label={`${level}/${max}`}
           >
