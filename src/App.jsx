@@ -17,6 +17,7 @@ import {
   Settings2,
   Sparkles,
   Trash2,
+  Undo2,
   X,
 } from "lucide-react";
 
@@ -88,25 +89,28 @@ const starterModules = [
     type: "number",
     color: "#e39c68",
     fields: [
-      { id: "minutes", label: "Minutes travaillées", unit: "min" },
-      { id: "points", label: "Points de pourboire", unit: "pts" },
+      { id: "minutes", label: "Minutes travaillées", unit: "min", color: palette[0] },
+      { id: "points", label: "Points de pourboire", unit: "pts", color: palette[1] },
     ],
     computed: [
       {
         id: "salaire",
         label: "Salaire à 13,30 $/h",
+        visible: false,
         formula: "minutes / 60 * 13.30",
         unit: "$",
       },
       {
         id: "pourboires",
         label: "Total pourboires",
+        visible: false,
         formula: "points * 4",
         unit: "$",
       },
       {
         id: "total",
-        label: "Rémunération totale",
+        label: "Totale",
+        visible: true,
         formula: "minutes / 60 * 13.30 + points * 4",
         unit: "$",
       },
@@ -198,25 +202,28 @@ const normalizeState = (raw) => {
         ...module,
         subtitle: "Minutes, pourboires et rémunération",
         fields: [
-          { id: "minutes", label: "Minutes travaillées", unit: "min" },
-          { id: "points", label: "Points de pourboire", unit: "pts" },
+          { id: "minutes", label: "Minutes travaillées", unit: "min", color: palette[0] },
+          { id: "points", label: "Points de pourboire", unit: "pts", color: palette[1] },
         ],
         computed: [
           {
             id: "salaire",
             label: "Salaire à 13,30 $/h",
+            visible: false,
             formula: "minutes / 60 * 13.30",
             unit: "$",
           },
           {
             id: "pourboires",
             label: "Total pourboires",
+            visible: false,
             formula: "points * 4",
             unit: "$",
           },
           {
             id: "total",
-            label: "Rémunération totale",
+            label: "Totale",
+            visible: true,
             formula: "minutes / 60 * 13.30 + points * 4",
             unit: "$",
           },
@@ -244,26 +251,29 @@ const migrateFlexibleNumbers = (state) => {
     .filter((module) => module.title === "Travail" && module.type === "number");
   workModules.forEach((module) => {
     module.fields = [
-      { id: "heures", label: "Heures", unit: "h" },
-      { id: "minutes", label: "Minutes", unit: "min" },
-      { id: "points", label: "Points de pourboire", unit: "pts" },
+      { id: "heures", label: "Heures", unit: "h", color: palette[0] },
+      { id: "minutes", label: "Minutes", unit: "min", color: palette[1] },
+      { id: "points", label: "Points de pourboire", unit: "pts", color: palette[2] },
     ];
     module.computed = [
       {
         id: "salaire",
         label: "Salaire à 13,30 $/h",
+        visible: false,
         formula: "(heures + minutes / 60) * 13.30",
         unit: "$",
       },
       {
         id: "pourboires",
         label: "Total pourboires",
+        visible: false,
         formula: "points * 4",
         unit: "$",
       },
       {
         id: "total",
-        label: "Rémunération totale",
+        label: "Totale",
+        visible: true,
         formula: "(heures + minutes / 60) * 13.30 + points * 4",
         unit: "$",
       },
@@ -631,10 +641,18 @@ const hasNumberValue = (module, value) =>
       ),
   );
 const numberSummary = (module, value) =>
-  (module.fields || [])
-    .filter((field) => value?.[field.id] !== undefined && value?.[field.id] !== "" && value?.[field.id] !== null)
-    .map((field) => `${field.label}: ${value[field.id]}${field.unit || ""}`)
-    .join(" · ");
+  module.computed?.length
+    ? module.computed
+        .filter((computed) => computed.visible !== false)
+        .map(
+          (computed) =>
+            `${computed.label}: ${calculate(computed.formula, value, module.fields, module.computed)}${computed.unit || ""}`,
+        )
+        .join(" · ") || "vide"
+    : (module.fields || [])
+        .filter((field) => value?.[field.id] !== undefined && value?.[field.id] !== "" && value?.[field.id] !== null)
+        .map((field) => `${field.label}: ${value[field.id]}${field.unit || ""}`)
+        .join(" · ");
 
 function TrackerCard({ module, value, open, onToggle, onChange }) {
   const summary =
@@ -751,11 +769,13 @@ function ValueEditor({ module, value, onChange }) {
             </span>
           </label>
         ))}
-        {module.computed?.map((c) => (
+        {module.computed
+          ?.filter((c) => module.title !== "Travail" || c.id === "total")
+          .map((c) => (
           <div className="calculated" key={c.id}>
             <span>{c.label}</span>
             <b>
-              {calculate(c.formula, value)}
+              {calculate(c.formula, value, module.fields, module.computed)}
               {c.unit}
             </b>
           </div>
@@ -839,14 +859,45 @@ const nearestAnchor = (anchors = [], n) =>
   [...anchors].sort(
     (a, b) => Math.abs(a.value - n) - Math.abs(b.value - n),
   )[0] || { label: "" };
-const calculate = (formula, value = {}) => {
+const formulaName = (name) =>
+  name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9_$]/g, "_")
+    .replace(/^\d/, "_$&");
+const escapeFormulaText = (text) =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const calculate = (formula, value = {}, fields = [], computed = [], resolving = []) => {
   try {
+    const variables = {};
+    const aliases = [];
+    const addVariable = (label, name, variableValue) => {
+      variables[name] = variableValue;
+      if (label) aliases.push([label, name]);
+    };
+    fields.forEach((field) => {
+      const variableName = formulaName(field.id);
+      addVariable(field.id, variableName, Number(value[field.id] || 0));
+      addVariable(field.label, variableName, variables[variableName]);
+    });
+    computed.forEach((item) => {
+      const variableName = formulaName(item.id);
+      const variableValue = resolving.includes(item.id)
+        ? 0
+        : Number(calculate(item.formula, value, fields, computed, [...resolving, item.id]));
+      addVariable(item.id, variableName, variableValue);
+      addVariable(item.label, variableName, variableValue);
+    });
+    const expression = aliases
+      .sort(([a], [b]) => b.length - a.length)
+      .reduce((result, [label, name]) =>
+        result.replace(new RegExp(escapeFormulaText(label), "gi"), name), formula);
     return (
       Math.round(
         Function(
-          ...Object.keys(value),
-          `return ${formula}`,
-        )(...Object.values(value).map(Number)) * 100,
+          ...Object.keys(variables),
+          `return ${expression}`,
+        )(...Object.values(variables)) * 100,
       ) / 100
     );
   } catch {
@@ -1006,7 +1057,7 @@ const valueLabel = (module, value) => {
         .filter((f) => value[f.id] !== undefined && value[f.id] !== "")
         .map((f) => `${f.label}: ${value[f.id]}${f.unit}`),
       ...(module.computed || []).map(
-        (c) => `${c.label}: ${calculate(c.formula, value)}${c.unit}`,
+        (c) => `${c.label}: ${calculate(c.formula, value, module.fields, module.computed)}${c.unit}`,
       ),
     ].join(" · ");
   return String(value);
@@ -1016,7 +1067,7 @@ const historyValueLabel = (module, value) => {
     if (!value || !Object.values(value).some((item) => item !== "" && item !== undefined)) return "";
     return (module.computed || [])
       .filter((computed) => ["salaire", "pourboires", "total"].includes(computed.id))
-      .map((computed) => `${computed.id === "salaire" ? "Salaire" : computed.label}: ${calculate(computed.formula, value)}${computed.unit}`)
+      .map((computed) => `${computed.id === "salaire" ? "Salaire" : computed.label}: ${calculate(computed.formula, value, module.fields, module.computed)}${computed.unit}`)
       .join(" · ");
   }
   return valueLabel(module, value);
@@ -1319,6 +1370,7 @@ function Stats({ project, entries, savedDays }) {
         <span>Affichage</span>
         <button className={chartMode === "bars" ? "active" : ""} onClick={() => setChartMode("bars")}>Barres</button>
         <button className={chartMode === "pie" ? "active" : ""} onClick={() => setChartMode("pie")}>Graphique rond</button>
+        <button className={chartMode === "bands" ? "active" : ""} onClick={() => setChartMode("bands")}>Bandes</button>
       </div>
       <div className="stats-grid">
         {project.modules.filter((m) => selectedModules.has(m.id)).map((m) => (
@@ -1344,6 +1396,48 @@ const pieGradient = (module, buckets, totalDays) => {
   if (cursor < totalDays) segments.push(`#eee4df ${cursor / totalDays * 100}% 100%`);
   return `conic-gradient(${segments.join(", ")})`;
 };
+const formatStatNumber = (value) =>
+  value.toLocaleString("fr-CA", { maximumFractionDigits: 2 });
+const workTotals = (module, values) => {
+  const totalComputed = module.computed?.find((computed) => computed.id === "total");
+  return values.reduce(
+    (totals, value) => {
+      const hours = Number(value?.heures || 0) + Number(value?.minutes || 0) / 60;
+      const tips = Number(value?.points || 0) * 4;
+      const total = Number(calculate(totalComputed?.formula || "0", value, module.fields, module.computed));
+      return {
+        hours: totals.hours + hours,
+        tips: totals.tips + tips,
+        total: totals.total + (Number.isNaN(total) ? 0 : total),
+      };
+    },
+    { hours: 0, tips: 0, total: 0 },
+  );
+};
+const numberFieldTotals = (module, values) =>
+  (module.fields || []).map((field, index) => ({
+    label: field.label,
+    unit: field.unit || "",
+    color: field.color || palette[index % palette.length],
+    total: values.reduce((sum, value) => sum + Number(value?.[field.id] || 0), 0),
+  }));
+const numberPieGradient = (totals) => {
+  const total = totals.reduce((sum, item) => sum + item.total, 0);
+  if (!total) return "#eee4df";
+  let cursor = 0;
+  return `conic-gradient(${totals
+    .filter((item) => item.total > 0)
+    .map((item) => {
+      const start = (cursor / total) * 100;
+      cursor += item.total;
+      return `${item.color} ${start}% ${(cursor / total) * 100}%`;
+    })
+    .join(", ")})`;
+};
+const workDaysPieGradient = (workedDays, totalDays) => {
+  const workedPercent = totalDays ? (workedDays / totalDays) * 100 : 0;
+  return `conic-gradient(${palette[0]} 0% ${workedPercent}%, #eee4df ${workedPercent}% 100%)`;
+};
 function StatCard({ module, rows, totalDays, trackedDays, chartMode }) {
   const values = rows
     .map((row) => row[module.id])
@@ -1361,6 +1455,110 @@ function StatCard({ module, rows, totalDays, trackedDays, chartMode }) {
         <p>Aucune donnée pour cette période.</p>
       </article>
     );
+  if (module.type === "number") {
+    const fieldTotals = numberFieldTotals(module, values);
+    if (chartMode === "pie") {
+      const daysWithData = values.filter((value) => hasNumberValue(module, value)).length;
+      const daysWithoutData = Math.max(totalDays - daysWithData, 0);
+      const dataLabel = module.title === "Travail"
+        ? "Jours travaillés"
+        : module.fields?.length === 1
+          ? `Jours avec ${module.fields[0].label.toLowerCase()}`
+          : "Jours avec données";
+      return (
+        <article className="stat-card" style={{ "--accent": module.color }}>
+          <h3>
+            <i />
+            {module.title}
+          </h3>
+          <small>{totalDays} jours dans la période</small>
+          <div
+            className="stat-pie"
+            style={{ background: workDaysPieGradient(daysWithData, totalDays) }}
+            aria-label={`${dataLabel} et jours sans données`}
+          />
+          <div className="number-stat-legend">
+            <span><i style={{ background: palette[0] }} />{dataLabel}</span>
+            <span><i style={{ background: "#eee4df" }} />Jours sans données</span>
+          </div>
+          <div className="work-stat-summary">
+            <div><span>{dataLabel}</span><strong>{daysWithData}/{totalDays}</strong></div>
+            <div><span>Jours sans données</span><strong>{daysWithoutData}/{totalDays}</strong></div>
+          </div>
+        </article>
+      );
+    }
+    const workSummary = module.title === "Travail" ? workTotals(module, values) : null;
+    const totals = module.title === "Travail"
+      ? [
+          { label: "Heures", unit: "h", total: workSummary.hours, color: palette[0] },
+          { label: "Pourboires", unit: "$", total: workSummary.tips, color: palette[1] },
+          { label: "Totale", unit: "$", total: workSummary.total, color: module.color },
+        ]
+      : fieldTotals;
+    return (
+      <article className="stat-card" style={{ "--accent": module.color }}>
+        <h3>
+          <i />
+          {module.title}
+        </h3>
+        <small>
+          {trackedDays} jour{trackedDays > 1 ? "s" : ""} comptabilisé
+          {trackedDays > 1 ? "s" : ""} sur {totalDays}
+        </small>
+        {chartMode === "pie" && (
+          <>
+            <div
+              className="stat-pie"
+              style={{ background: numberPieGradient(fieldTotals) }}
+              aria-label={`Graphique de ${module.title}`}
+            />
+            <div className="number-stat-legend">
+              {fieldTotals.map((item) => (
+                <span key={item.label}>
+                  <i style={{ background: item.color }} />
+                  {item.label}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+        {chartMode === "bars" && (
+          <div className="numeric-bar-list" aria-label={`Barres de ${module.title}`}>
+            {totals.map((item) => {
+              const maximum = Math.max(...totals.map((entry) => entry.total), 1);
+              return (
+                <div className="stat-row" key={item.label}>
+                  <span className="stat-label">{item.label}</span>
+                  <strong>{formatStatNumber(item.total)}{item.unit ? ` ${item.unit}` : ""}</strong>
+                  <div className="stat-bar">
+                    <i style={{ width: `${Math.min((item.total / maximum) * 100, 100)}%`, background: item.color }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {chartMode === "bands" && (
+          <div className="numeric-comparison" aria-label={`Comparaison de ${module.title}`}>
+            {totals.map((item) => {
+              const maximum = Math.max(...totals.map((entry) => entry.total), 1);
+              const height = item.total > 0 ? Math.max((item.total / maximum) * 100, 8) : 0;
+              return (
+                <div className="numeric-comparison-item" key={item.label}>
+                  <strong>{formatStatNumber(item.total)}{item.unit ? ` ${item.unit}` : ""}</strong>
+                  <div className="numeric-comparison-track">
+                    <i style={{ height: `${height}%`, background: item.color }} />
+                  </div>
+                  <span>{item.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </article>
+    );
+  }
   const buckets =
     module.type === "scale"
       ? Array.from({ length: 11 }, (_, i) => ({
@@ -1393,6 +1591,39 @@ function StatCard({ module, rows, totalDays, trackedDays, chartMode }) {
                 count: values.length,
               },
             ];
+  if (chartMode === "bands") {
+    const visibleBuckets = buckets.filter((bucket) => bucket.count);
+    const maximum = Math.max(...visibleBuckets.map((bucket) => bucket.count), 1);
+    return (
+      <article className="stat-card" style={{ "--accent": module.color }}>
+        <h3><i />{module.title}</h3>
+        <small>
+          {trackedDays} jour{trackedDays > 1 ? "s" : ""} comptabilisé
+          {trackedDays > 1 ? "s" : ""} sur {totalDays}
+        </small>
+        {visibleBuckets.length ? (
+          <div className="category-comparison" aria-label={`Bandes de ${module.title}`}>
+            {visibleBuckets.map((bucket) => (
+              <div className="category-comparison-item" key={bucket.label}>
+                <strong>{bucket.count}</strong>
+                <div className="category-comparison-track">
+                  <i
+                    style={{
+                      height: `${Math.max((bucket.count / maximum) * 100, 8)}%`,
+                      background: chartColor(module, bucket.label),
+                    }}
+                  />
+                </div>
+                <span>{bucket.label}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p>Aucune donnée pour cette période.</p>
+        )}
+      </article>
+    );
+  }
   return (
     <article className="stat-card" style={{ "--accent": module.color }}>
       <h3>
@@ -1556,7 +1787,7 @@ function Settings({ project, onProject, onClose, onDelete }) {
                 }
               : type === "number"
                 ? {
-                    fields: [{ id: "valeur", label: "Valeur", unit: "" }],
+                    fields: [{ id: "valeur", label: "Valeur", unit: "", color: palette[0] }],
                     computed: [],
                   }
                 : type === "check"
@@ -1570,7 +1801,7 @@ function Settings({ project, onProject, onClose, onDelete }) {
     if (type === "hour" || type === "money") {
       m.type = "number";
       m.title = type === "hour" ? "Nouveau suivi d'heure" : "Nouveau suivi en dollars";
-      m.fields = [{ id: uid("field"), label: type === "hour" ? "Durée" : "Montant", unit: type === "hour" ? "h" : "$" }];
+      m.fields = [{ id: uid("field"), label: type === "hour" ? "Durée" : "Montant", unit: type === "hour" ? "h" : "$", color: palette[0] }];
       m.computed = [];
     }
     onProject({ modules: [...project.modules, m] });
@@ -1692,7 +1923,18 @@ function Settings({ project, onProject, onClose, onDelete }) {
 }
 
 function ModuleEditor({ module, onChange, onClose, onDelete }) {
-  const patch = (p) => onChange({ ...module, ...p });
+  const [draggingOptionId, setDraggingOptionId] = useState(null);
+  const optionPressTimer = useRef(null);
+  const moduleHistory = useRef([]);
+  const patch = (p) => {
+    moduleHistory.current.push(module);
+    onChange({ ...module, ...p });
+  };
+  const undoLastChange = () => {
+    if (!moduleHistory.current.length) return;
+    const previous = moduleHistory.current.pop();
+    onChange(previous);
+  };
   const patchOption = (id, p) =>
     patch({
       options: module.options.map((o) => (o.id === id ? { ...o, ...p } : o)),
@@ -1705,6 +1947,35 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
     patch({
       fields: module.fields.map((f) => (f.id === id ? { ...f, ...p } : f)),
     });
+  const stopDraggingOption = () => {
+    clearTimeout(optionPressTimer.current);
+    optionPressTimer.current = null;
+    setDraggingOptionId(null);
+  };
+  const startDraggingOption = (event, id) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    clearTimeout(optionPressTimer.current);
+    optionPressTimer.current = setTimeout(() => setDraggingOptionId(id), 250);
+  };
+  const moveDraggedOption = (event) => {
+    if (!draggingOptionId) return;
+    event.preventDefault();
+    const target = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest(".module-option-row[data-option-id]");
+    const targetId = target?.dataset.optionId;
+    if (!targetId || targetId === draggingOptionId) return;
+    const fromIndex = module.options.findIndex(
+      (option) => option.id === draggingOptionId,
+    );
+    const toIndex = module.options.findIndex((option) => option.id === targetId);
+    if (fromIndex < 0 || toIndex < 0) return;
+    const options = [...module.options];
+    const [moved] = options.splice(fromIndex, 1);
+    options.splice(toIndex, 0, moved);
+    patch({ options });
+  };
   return (
     <div className="module-editor">
       <div className="editor-title">
@@ -1729,8 +2000,14 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
       {module.fields && (
         <div className="edit-options">
           <div className="settings-label">Sous-champs</div>
-          {module.fields.map((f) => (
+          {module.fields.map((f, index) => (
             <div key={f.id}>
+              <input
+                type="color"
+                value={f.color || palette[index % palette.length]}
+                onChange={(e) => patchField(f.id, { color: e.target.value })}
+                aria-label={`Couleur de ${f.label}`}
+              />
               <input
                 value={f.label}
                 onChange={(e) => patchField(f.id, { label: e.target.value })}
@@ -1756,7 +2033,7 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
               patch({
                 fields: [
                   ...module.fields,
-                  { id: uid("field"), label: "Nouveau sous-champ", unit: "" },
+                  { id: uid("field"), label: "Nouveau sous-champ", unit: "", color: palette[module.fields.length % palette.length] },
                 ],
               })
             }
@@ -1768,7 +2045,22 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
       {module.options && (
         <div className="edit-options">
           {module.options.map((o) => (
-            <div key={o.id}>
+            <div
+              className={`module-option-row ${draggingOptionId === o.id ? "is-dragging" : ""}`}
+              data-option-id={o.id}
+              key={o.id}
+            >
+              <span
+                className="module-option-drag-handle"
+                onPointerDown={(event) => startDraggingOption(event, o.id)}
+                onPointerMove={moveDraggedOption}
+                onPointerUp={stopDraggingOption}
+                onPointerCancel={stopDraggingOption}
+                aria-label={`Déplacer ${o.label}`}
+                title="Maintenir et faire glisser"
+              >
+                <GripVertical size={15} aria-hidden="true" />
+              </span>
               <input
                 type="color"
                 value={o.color}
@@ -1862,7 +2154,31 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
         <div className="formula-list">
           {module.computed.map((c) => (
             <label key={c.id}>
-              {c.label}
+              <span className="formula-visibility">
+                <input
+                  type="checkbox"
+                  checked={c.visible !== false}
+                  onChange={(e) =>
+                    patch({
+                      computed: module.computed.map((x) =>
+                        x.id === c.id ? { ...x, visible: e.target.checked } : x,
+                      ),
+                    })
+                  }
+                />
+                afficher
+              </span>
+              <input
+                value={c.label}
+                onChange={(e) =>
+                  patch({
+                    computed: module.computed.map((x) =>
+                      x.id === c.id ? { ...x, label: e.target.value } : x,
+                    ),
+                  })
+                }
+                placeholder="Nom de la formule"
+              />
               <input
                 value={c.formula}
                 onChange={(e) =>
@@ -1898,6 +2214,15 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
       <div className="editor-actions">
         <button className="delete-small" onClick={onDelete}>
           <Trash2 size={14} /> Supprimer
+        </button>
+        <button
+          className="undo-small"
+          onClick={undoLastChange}
+          disabled={!moduleHistory.current.length}
+          aria-label="Revenir à la modification précédente"
+          title="Annuler la dernière modification"
+        >
+          <Undo2 size={16} />
         </button>
         <button className="done" onClick={onClose}>
           Terminé
