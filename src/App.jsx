@@ -259,6 +259,20 @@ function App() {
   const [view, setView] = useState("today");
   const [userName, setUserName] = useState(() => loadUserName() || "");
   const [nameAsked, setNameAsked] = useState(() => loadUserName() !== null);
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      return localStorage.getItem("mes-suivis-theme") === "dark";
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", darkMode);
+    try {
+      localStorage.setItem("mes-suivis-theme", darkMode ? "dark" : "light");
+    } catch {
+    }
+  }, [darkMode]);
   useEffect(() => {
     persistState(state);
     const flush = () => persistState(state);
@@ -324,6 +338,8 @@ function App() {
             persistUserName(name);
             setUserName(name);
           }}
+          darkMode={darkMode}
+          onToggleDarkMode={setDarkMode}
           projects={state.projects}
           entries={state.entries}
           onOpen={setProjectId}
@@ -384,7 +400,7 @@ const shortDate = (isoOrKey) =>
   new Intl.DateTimeFormat("fr-CA", { day: "numeric", month: "short", year: "numeric" }).format(
     isoOrKey.includes("T") ? new Date(isoOrKey) : new Date(`${isoOrKey}T12:00:00`),
   );
-function Home({ userName, onUpdateName, projects, entries, onOpen, onCreate, onDelete, onReorder }) {
+function Home({ userName, onUpdateName, darkMode, onToggleDarkMode, projects, entries, onOpen, onCreate, onDelete, onReorder }) {
   const [modal, setModal] = useState(false);
   const [appSettings, setAppSettings] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
@@ -525,6 +541,8 @@ function Home({ userName, onUpdateName, projects, entries, onOpen, onCreate, onD
       {appSettings && (
         <AppSettingsModal
           userName={userName}
+          darkMode={darkMode}
+          onToggleDarkMode={onToggleDarkMode}
           onClose={() => setAppSettings(false)}
           onSave={(name) => {
             onUpdateName(name);
@@ -2528,7 +2546,7 @@ function NamePrompt({ onSave }) {
   );
 }
 
-function AppSettingsModal({ userName, onClose, onSave }) {
+function AppSettingsModal({ userName, darkMode, onToggleDarkMode, onClose, onSave }) {
   const [name, setName] = useState(userName || "");
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -2547,6 +2565,14 @@ function AppSettingsModal({ userName, onClose, onSave }) {
             }}
           />
         </div>
+        <label className="dark-mode-toggle">
+          <span>Mode sombre</span>
+          <input
+            type="checkbox"
+            checked={darkMode}
+            onChange={(e) => onToggleDarkMode(e.target.checked)}
+          />
+        </label>
         <div className="modal-actions">
           <button onClick={onClose}>Annuler</button>
           <button className="done" onClick={() => onSave(name.trim())}>
