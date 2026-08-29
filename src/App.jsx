@@ -1950,37 +1950,39 @@ function Settings({ project, onProject, onClose, onDelete }) {
             <X />
           </button>
         </div>
-        <label className="project-edit">
-          <span>Nom du projet</span>
-          <span className="field-line">
-            <input
-              value={project.name}
-              onChange={(e) => onProject({ name: e.target.value })}
-            />
-          </span>
-        </label>
-        <label className="project-edit">
-          <span>Icône du projet</span>
-          <span className="field-line">
-            <input
-              className="emoji-input"
-              value={project.emoji}
-              onChange={(e) => onProject({ emoji: e.target.value })}
-              maxLength="2"
-            />
-          </span>
-        </label>
-        <label className="project-edit">
-          <span>Couleur du projet</span>
-          <span className="field-line">
-            <input
-              className="color-input"
-              type="color"
-              value={project.color}
-              onChange={(e) => onProject({ color: e.target.value })}
-            />
-          </span>
-        </label>
+        <div className="project-fields">
+          <label className="project-edit">
+            <span>Nom du projet</span>
+            <span className="field-line">
+              <input
+                value={project.name}
+                onChange={(e) => onProject({ name: e.target.value })}
+              />
+            </span>
+          </label>
+          <label className="project-edit">
+            <span>Icône du projet</span>
+            <span className="field-line">
+              <input
+                className="emoji-input"
+                value={project.emoji}
+                onChange={(e) => onProject({ emoji: e.target.value })}
+                maxLength="2"
+              />
+            </span>
+          </label>
+          <label className="project-edit">
+            <span>Couleur du projet</span>
+            <span className="field-line">
+              <input
+                className="color-input"
+                type="color"
+                value={project.color}
+                onChange={(e) => onProject({ color: e.target.value })}
+              />
+            </span>
+          </label>
+        </div>
         <div className="settings-label">Tes suivis</div>
         {project.modules.map((m) => (
           <div
