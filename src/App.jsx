@@ -240,9 +240,9 @@ const persistState = (next) => {
 };
 const loadUserName = () => {
   try {
-    return localStorage.getItem("mes-suivis-name") || "";
+    return localStorage.getItem("mes-suivis-name");
   } catch {
-    return "";
+    return null;
   }
 };
 const persistUserName = (name) => {
@@ -257,7 +257,8 @@ function App() {
   const [projectId, setProjectId] = useState(null);
   const [date, setDate] = useState(new Date());
   const [view, setView] = useState("today");
-  const [userName, setUserName] = useState(loadUserName);
+  const [userName, setUserName] = useState(() => loadUserName() || "");
+  const [nameAsked, setNameAsked] = useState(() => loadUserName() !== null);
   useEffect(() => {
     persistState(state);
     const flush = () => persistState(state);
@@ -308,11 +309,12 @@ function App() {
   if (!project)
     return (
       <>
-        {!userName && (
+        {!nameAsked && (
           <NamePrompt
             onSave={(name) => {
               persistUserName(name);
               setUserName(name);
+              setNameAsked(true);
             }}
           />
         )}
@@ -2475,16 +2477,12 @@ function NamePrompt({ onSave }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && name.trim()) onSave(name.trim());
+              if (e.key === "Enter") onSave(name.trim());
             }}
           />
         </div>
         <div className="modal-actions">
-          <button
-            className="done"
-            disabled={!name.trim()}
-            onClick={() => onSave(name.trim())}
-          >
+          <button className="done" onClick={() => onSave(name.trim())}>
             Continuer
           </button>
         </div>
