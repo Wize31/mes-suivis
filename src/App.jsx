@@ -1921,13 +1921,13 @@ function Settings({ project, onProject, onClose, onDelete }) {
             onChange={(e) => onProject({ emoji: e.target.value })}
             maxLength="2"
           />
+        </label>
+        <label className="color-line">
+          Couleur du projet{" "}
           <input
-            className="color-input"
             type="color"
             value={project.color}
             onChange={(e) => onProject({ color: e.target.value })}
-            aria-label="Couleur du projet"
-            title="Couleur du projet"
           />
         </label>
         <div className="settings-label">Tes suivis</div>
