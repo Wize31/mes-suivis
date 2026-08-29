@@ -320,6 +320,10 @@ function App() {
         )}
         <Home
           userName={userName}
+          onUpdateName={(name) => {
+            persistUserName(name);
+            setUserName(name);
+          }}
           projects={state.projects}
           entries={state.entries}
           onOpen={setProjectId}
@@ -380,8 +384,9 @@ const shortDate = (isoOrKey) =>
   new Intl.DateTimeFormat("fr-CA", { day: "numeric", month: "short", year: "numeric" }).format(
     isoOrKey.includes("T") ? new Date(isoOrKey) : new Date(`${isoOrKey}T12:00:00`),
   );
-function Home({ userName, projects, entries, onOpen, onCreate, onDelete, onReorder }) {
+function Home({ userName, onUpdateName, projects, entries, onOpen, onCreate, onDelete, onReorder }) {
   const [modal, setModal] = useState(false);
+  const [appSettings, setAppSettings] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const pressTimer = useRef(null);
   const stopDragging = () => {
@@ -415,6 +420,14 @@ function Home({ userName, projects, entries, onOpen, onCreate, onDelete, onReord
     <main className="home page-width">
       <div className="brand-mark">
         <Sparkles size={18} /> mes suivis
+        <button
+          className="icon-button home-settings"
+          onClick={() => setAppSettings(true)}
+          aria-label="Réglages du profil"
+          title="Réglages du profil"
+        >
+          <Settings2 size={19} />
+        </button>
       </div>
       <header className="home-head">
         <div>
@@ -506,6 +519,16 @@ function Home({ userName, projects, entries, onOpen, onCreate, onDelete, onReord
           onSave={(p) => {
             onCreate(p);
             setModal(false);
+          }}
+        />
+      )}
+      {appSettings && (
+        <AppSettingsModal
+          userName={userName}
+          onClose={() => setAppSettings(false)}
+          onSave={(name) => {
+            onUpdateName(name);
+            setAppSettings(false);
           }}
         />
       )}
@@ -2498,6 +2521,36 @@ function NamePrompt({ onSave }) {
         <div className="modal-actions">
           <button className="done" onClick={() => onSave(name.trim())}>
             Continuer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AppSettingsModal({ userName, onClose, onSave }) {
+  const [name, setName] = useState(userName || "");
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <p className="eyebrow">réglages</p>
+        <h2>Ton prénom</h2>
+        <div className="modal-fields">
+          <input
+            className="name-input"
+            autoFocus
+            placeholder="Ton prénom"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onSave(name.trim());
+            }}
+          />
+        </div>
+        <div className="modal-actions">
+          <button onClick={onClose}>Annuler</button>
+          <button className="done" onClick={() => onSave(name.trim())}>
+            Enregistrer
           </button>
         </div>
       </div>
