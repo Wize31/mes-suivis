@@ -1903,7 +1903,7 @@ function Settings({ project, onProject, onClose, onDelete }) {
       m.fields = [{ id: uid("field"), label: type === "hour" ? "Durée" : "Montant", unit: type === "hour" ? "h" : "$", color: palette[0] }];
       m.computed = [];
     }
-    onProject({ modules: [...project.modules, m] });
+    mutateProject({ modules: [...project.modules, m] });
     setEditing(m.id);
   };
   const deleteModule = (id) => {
