@@ -440,8 +440,10 @@ function Home({ projects, entries, onOpen, onCreate, onDelete, onReorder }) {
                   <GripVertical size={15} aria-hidden="true" />
                 </span>
                 <button className="tile-main" onClick={() => onOpen(p.id)}>
-                  <span className="tile-emoji">{p.emoji}</span>
-                  <strong>{p.name}</strong>
+                  <span className="tile-title-row">
+                    <span className="tile-emoji">{p.emoji}</span>
+                    <strong>{p.name}</strong>
+                  </span>
                   <small>{p.modules.length} suivis configurés</small>
                   <small className="tile-dates">
                     Créé le {shortDate(p.createdAt || new Date().toISOString())}
