@@ -1910,11 +1910,14 @@ function Settings({ project, onProject, onClose, onDelete }) {
           </button>
         </div>
         <label className="project-edit">
-          <span>Projet</span>
+          <span>Nom du projet</span>
           <input
             value={project.name}
             onChange={(e) => onProject({ name: e.target.value })}
           />
+        </label>
+        <label className="project-edit">
+          <span>Icône du projet</span>
           <input
             className="emoji-input"
             value={project.emoji}
@@ -1922,9 +1925,10 @@ function Settings({ project, onProject, onClose, onDelete }) {
             maxLength="2"
           />
         </label>
-        <label className="color-line">
-          Couleur du projet{" "}
+        <label className="project-edit">
+          <span>Couleur du projet</span>
           <input
+            className="color-input"
             type="color"
             value={project.color}
             onChange={(e) => onProject({ color: e.target.value })}
