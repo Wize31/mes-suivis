@@ -1767,6 +1767,7 @@ function StatCard({ module, rows, totalDays, trackedDays, chartMode }) {
               <i
                 style={{
                   width: `${Math.min((bucket.count / totalDays) * 100, 100)}%`,
+                  background: chartColor(module, bucket.label),
                 }}
               />
             </div>
