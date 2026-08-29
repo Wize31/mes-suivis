@@ -238,12 +238,26 @@ const persistState = (next) => {
   } catch {
   }
 };
+const loadUserName = () => {
+  try {
+    return localStorage.getItem("mes-suivis-name") || "";
+  } catch {
+    return "";
+  }
+};
+const persistUserName = (name) => {
+  try {
+    localStorage.setItem("mes-suivis-name", name);
+  } catch {
+  }
+};
 
 function App() {
   const [state, setState] = useState(loadState);
   const [projectId, setProjectId] = useState(null);
   const [date, setDate] = useState(new Date());
   const [view, setView] = useState("today");
+  const [userName, setUserName] = useState(loadUserName);
   useEffect(() => {
     persistState(state);
     const flush = () => persistState(state);
@@ -293,10 +307,20 @@ function App() {
     });
   if (!project)
     return (
-      <Home
-        projects={state.projects}
-        entries={state.entries}
-        onOpen={setProjectId}
+      <>
+        {!userName && (
+          <NamePrompt
+            onSave={(name) => {
+              persistUserName(name);
+              setUserName(name);
+            }}
+          />
+        )}
+        <Home
+          userName={userName}
+          projects={state.projects}
+          entries={state.entries}
+          onOpen={setProjectId}
         onCreate={(p) => {
           const next = { ...p, id: uid("project"), modules: [], createdAt: new Date().toISOString() };
           setState((s) => ({ ...s, projects: [...s.projects, next] }));
@@ -314,7 +338,8 @@ function App() {
             return next;
           })
         }
-      />
+        />
+      </>
     );
   const entry = state.entries[`${projectId}:${keyFor(date)}`] || {};
   return (
@@ -353,7 +378,7 @@ const shortDate = (isoOrKey) =>
   new Intl.DateTimeFormat("fr-CA", { day: "numeric", month: "short", year: "numeric" }).format(
     isoOrKey.includes("T") ? new Date(isoOrKey) : new Date(`${isoOrKey}T12:00:00`),
   );
-function Home({ projects, entries, onOpen, onCreate, onDelete, onReorder }) {
+function Home({ userName, projects, entries, onOpen, onCreate, onDelete, onReorder }) {
   const [modal, setModal] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const pressTimer = useRef(null);
@@ -392,7 +417,7 @@ function Home({ projects, entries, onOpen, onCreate, onDelete, onReorder }) {
       <header className="home-head">
         <div>
           <h1>
-            Qu'est-ce qu'on suit
+            Qu'est-ce qu'on suit{userName ? ` « ${userName} »` : ""}
             <br />
             <em>aujourd'hui ?</em>
           </h1>
@@ -2430,6 +2455,39 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
         <button className="done" onClick={onClose}>
           Terminé
         </button>
+      </div>
+    </div>
+  );
+}
+
+function NamePrompt({ onSave }) {
+  const [name, setName] = useState("");
+  return (
+    <div className="modal-backdrop">
+      <div className="modal">
+        <p className="eyebrow">bienvenue</p>
+        <h2>Comment devons-nous t'appeler ?</h2>
+        <div className="modal-fields">
+          <input
+            className="name-input"
+            autoFocus
+            placeholder="Ton prénom"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && name.trim()) onSave(name.trim());
+            }}
+          />
+        </div>
+        <div className="modal-actions">
+          <button
+            className="done"
+            disabled={!name.trim()}
+            onClick={() => onSave(name.trim())}
+          >
+            Continuer
+          </button>
+        </div>
       </div>
     </div>
   );
