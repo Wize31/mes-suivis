@@ -12,12 +12,15 @@ import {
   Droplets,
   FileJson,
   GripVertical,
+  Heart,
   Pencil,
   Plus,
   Settings2,
   Sparkles,
+  Star,
   Trash2,
   Undo2,
+  Wine,
   X,
 } from "lucide-react";
 
@@ -414,14 +417,13 @@ function Home({ projects, onOpen, onCreate, onDelete }) {
       </div>
       <header className="home-head">
         <div>
-          <p className="eyebrow">ton petit tableau de bord</p>
           <h1>
             Qu'est-ce qu'on suit
             <br />
             <em>aujourd'hui ?</em>
           </h1>
           <p className="intro">
-            Un endroit doux et simple pour prendre de tes nouvelles.
+            Un endroit doux et simple pour te souvenir.
           </p>
         </div>
         <div className="sun-note">
@@ -658,7 +660,11 @@ function TrackerCard({ module, value, open, onToggle, onChange }) {
   const summary =
     module.type === "scale" && typeof value === "number"
       ? `${value}/10`
-      : module.type === "text"
+      : module.type === "rating"
+        ? typeof value === "number" && value > 0
+          ? `${value}/${module.max || 5}`
+          : "vide"
+        : module.type === "text"
         ? value
           ? `${value.slice(0, 45)}${value.length > 45 ? "…" : ""}`
           : "vide"
@@ -716,6 +722,32 @@ function ValueEditor({ module, value, onChange }) {
         placeholder="Écris ce que tu veux garder en tête..."
       />
     );
+  if (module.type === "rating") {
+    const max = module.max || 5;
+    const n = typeof value === "number" ? value : 0;
+    const RatingIcon = module.shape === "heart" ? Heart : module.shape === "wine" ? Wine : Star;
+    const activeLevel = module.levels?.find((level) => level.value === n);
+    const activeColor = activeLevel?.color || module.color;
+    return (
+      <div className="rating-editor">
+        {Array.from({ length: max }, (_, i) => i + 1).map((level) => (
+          <button
+            key={level}
+            className={`rating-icon ${level <= n ? "filled" : ""}`}
+            style={{ "--rating-color": level <= n ? activeColor : undefined }}
+            onClick={() => onChange(n === level ? 0 : level)}
+            aria-label={`${level}/${max}`}
+          >
+            <RatingIcon size={26} fill={level <= n ? "currentColor" : "none"} />
+          </button>
+        ))}
+        <span className="rating-value">
+          {n}/{max}
+          {activeLevel?.label && ` · ${activeLevel.label}`}
+        </span>
+      </div>
+    );
+  }
   if (module.type === "scale") {
     const n = typeof value === "number" ? value : 5;
     const scaleAnchors = [...(module.anchors || [])].sort((a, b) => a.value - b.value);
@@ -1034,9 +1066,14 @@ const valueLabel = (module, value) => {
     value === undefined ||
     value === null ||
     value === "" ||
-    (Array.isArray(value) && !value.length)
+    (Array.isArray(value) && !value.length) ||
+    (module.type === "rating" && !value)
   )
     return "";
+  if (module.type === "rating") {
+    const level = module.levels?.find((l) => l.value === value);
+    return `${value}/${module.max || 5}${level?.label ? ` (${level.label})` : ""}`;
+  }
   if (module.type === "scale")
     return `${value}/10 (${nearestAnchor(module.anchors, value).label})`;
   if (
@@ -1154,14 +1191,15 @@ function historyDays(period, cursor) {
 function History({ project, entries, onPick }) {
   const [period, setPeriod] = useState("month");
   const [cursor, setCursor] = useState(new Date());
+  const trackableModules = project.modules.filter((module) => module.type !== "text");
   const [selectedModules, setSelectedModules] = useState(
-    () => new Set(project.modules.map((module) => module.id)),
+    () => new Set(trackableModules.map((module) => module.id)),
   );
   const days = historyDays(period, cursor);
   const shift = period === "week" ? 7 : period === "month" ? 1 : 12;
   const title = period === "week" ? "Semaine" : period === "month" ? monthName(cursor) : `Année ${cursor.getFullYear()}`;
   const move = (amount) => setCursor((date) => new Date(date.getFullYear(), date.getMonth() + (period === "year" ? amount * 12 : period === "month" ? amount : 0), date.getDate() + (period === "week" ? amount * shift : 0)));
-  const visibleModules = project.modules.filter((module) => selectedModules.has(module.id));
+  const visibleModules = trackableModules.filter((module) => selectedModules.has(module.id));
   return (
     <section className="summary-history page-width">
       <div className="summary-history-head">
@@ -1169,8 +1207,8 @@ function History({ project, entries, onPick }) {
         <div className="period-tabs">{[["week", "Semaine"], ["month", "Mois"], ["year", "Année"]].map(([id, label]) => <button className={period === id ? "active" : ""} onClick={() => setPeriod(id)} key={id}>{label}</button>)}</div>
       </div>
       <div className="history-filters compact-filters">
-        <div><strong>Suivis visibles</strong><div className="filter-actions"><button onClick={() => setSelectedModules(new Set(project.modules.map((module) => module.id)))}>Tout</button><button onClick={() => setSelectedModules(new Set())}>Aucun</button></div></div>
-        <div className="filter-options">{project.modules.map((module) => <label key={module.id}><input type="checkbox" checked={selectedModules.has(module.id)} onChange={() => setSelectedModules((current) => { const next = new Set(current); next.has(module.id) ? next.delete(module.id) : next.add(module.id); return next; })} /><span style={{ background: module.color }} />{module.title}</label>)}</div>
+        <div><strong>Suivis visibles</strong><div className="filter-actions"><button onClick={() => setSelectedModules(new Set(trackableModules.map((module) => module.id)))}>Tout</button><button onClick={() => setSelectedModules(new Set())}>Aucun</button></div></div>
+        <div className="filter-options">{trackableModules.map((module) => <label key={module.id}><input type="checkbox" checked={selectedModules.has(module.id)} onChange={() => setSelectedModules((current) => { const next = new Set(current); next.has(module.id) ? next.delete(module.id) : next.add(module.id); return next; })} /><span style={{ background: module.color }} />{module.title}</label>)}</div>
       </div>
       <div className="history-nav"><button className="icon-button" onClick={() => move(-1)}><ChevronLeft /></button><strong>{period === "week" ? `${days[0].getDate()} - ${days[6].getDate()} ${monthName(days[6])}` : title}</strong><button className="icon-button" onClick={() => move(1)}><ChevronRight /></button></div>
       <div className="summary-table-wrap"><table className="summary-table"><thead><tr><th>Date</th>{visibleModules.map((module) => <th key={module.id}><span style={{ background: module.color }} />{module.title}</th>)}</tr></thead><tbody>{days.map((day) => { const values = entries?.[`${project.id}:${keyFor(day)}`] || {}; return <tr key={keyFor(day)}><th><button onClick={() => onPick(day)}>{new Intl.DateTimeFormat("fr-CA", { day: "2-digit", month: "short" }).format(day)}</button></th>{visibleModules.map((module) => <td key={module.id}>{historyValueLabel(module, values[module.id])}</td>)}</tr>; })}</tbody></table></div>
@@ -1286,41 +1324,55 @@ function LegacyHistory({ project, entries, onPick }) {
 
 function Stats({ project, entries, savedDays }) {
   const [period, setPeriod] = useState("year");
+  const [cursor, setCursor] = useState(new Date());
   const [chartMode, setChartMode] = useState("bars");
+  const trackableModules = project.modules.filter((module) => module.type !== "text");
   const [selectedModules, setSelectedModules] = useState(
-    () => new Set(project.modules.map((module) => module.id)),
+    () => new Set(trackableModules.map((module) => module.id)),
   );
   const now = new Date();
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   const start =
     period === "week"
-      ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6)
+      ? new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() - ((cursor.getDay() + 6) % 7))
       : period === "month"
-        ? new Date(now.getFullYear(), now.getMonth(), 1)
-        : new Date(now.getFullYear(), 0, 1);
-  const todayEnd = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() + 1,
-  );
-  const yearStart = new Date(now.getFullYear(), 0, 1);
-  const nextYearStart = new Date(now.getFullYear() + 1, 0, 1);
-  const totalDays =
+        ? new Date(cursor.getFullYear(), cursor.getMonth(), 1)
+        : new Date(cursor.getFullYear(), 0, 1);
+  const end =
     period === "week"
-      ? 7
+      ? new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7)
       : period === "month"
-        ? new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-        : Math.round((nextYearStart - yearStart) / 86400000);
+        ? new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
+        : new Date(cursor.getFullYear() + 1, 0, 1);
+  const totalDays = Math.round((end - start) / 86400000);
+  const boundedEnd = end < todayEnd ? end : todayEnd;
   const trackedDays = Array.from({ length: totalDays }, (_, index) => {
     const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index);
-    return day < todayEnd && savedDays?.[`${project.id}:${keyFor(day)}`];
+    return day < boundedEnd && savedDays?.[`${project.id}:${keyFor(day)}`];
   }).filter(Boolean).length;
   const rows = Object.entries(entries || {})
     .filter(([key, value]) => {
       if (!key.startsWith(`${project.id}:`)) return false;
       const d = new Date(`${key.split(":")[1]}T12:00:00`);
-      return d >= start && d < todayEnd && Object.keys(value).length;
+      return d >= start && d < boundedEnd && Object.keys(value).length;
     })
     .map(([, value]) => value);
+  const moveCursor = (amount) =>
+    setCursor((date) =>
+      period === "week"
+        ? new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount * 7)
+        : period === "month"
+          ? new Date(date.getFullYear(), date.getMonth() + amount, 1)
+          : new Date(date.getFullYear() + amount, 0, 1),
+    );
+  const weekEnd = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+  const periodLabel =
+    period === "week"
+      ? `${new Intl.DateTimeFormat("fr-CA", { weekday: "long", day: "numeric" }).format(start)} au ${new Intl.DateTimeFormat("fr-CA", { weekday: "long", day: "numeric", month: "long" }).format(weekEnd)}`
+      : period === "month"
+        ? monthName(cursor)
+        : `Année ${cursor.getFullYear()}`;
+  const isCurrentPeriod = now >= start && now < end;
   return (
     <section className="stats page-width">
       <div className="history-top">
@@ -1344,6 +1396,26 @@ function Stats({ project, entries, savedDays }) {
           ))}
         </div>
       </div>
+      <div className="history-nav">
+        <button className="icon-button" onClick={() => moveCursor(-1)}>
+          <ChevronLeft />
+        </button>
+        <strong>{periodLabel}</strong>
+        {isCurrentPeriod ? (
+          <button className="icon-button" disabled>
+            <ChevronRight />
+          </button>
+        ) : (
+          <button className="icon-button" onClick={() => moveCursor(1)}>
+            <ChevronRight />
+          </button>
+        )}
+      </div>
+      {!isCurrentPeriod && (
+        <button className="today-link" onClick={() => setCursor(new Date())}>
+          revenir à la période actuelle
+        </button>
+      )}
       <p className="stats-caption">
         Pourcentages calculés sur les {totalDays} jours de la période, remplis
         ou non.
@@ -1352,12 +1424,12 @@ function Stats({ project, entries, savedDays }) {
         <div>
           <strong>Suivis visibles</strong>
           <div className="filter-actions">
-            <button onClick={() => setSelectedModules(new Set(project.modules.map((module) => module.id)))}>Tout</button>
+            <button onClick={() => setSelectedModules(new Set(trackableModules.map((module) => module.id)))}>Tout</button>
             <button onClick={() => setSelectedModules(new Set())}>Aucun</button>
           </div>
         </div>
         <div className="filter-options">
-          {project.modules.map((module) => (
+          {trackableModules.map((module) => (
             <label key={module.id}>
               <input type="checkbox" checked={selectedModules.has(module.id)} onChange={() => setSelectedModules((current) => { const next = new Set(current); next.has(module.id) ? next.delete(module.id) : next.add(module.id); return next; })} />
               <span style={{ background: module.color }} />
@@ -1373,7 +1445,7 @@ function Stats({ project, entries, savedDays }) {
         <button className={chartMode === "bands" ? "active" : ""} onClick={() => setChartMode("bands")}>Bandes</button>
       </div>
       <div className="stats-grid">
-        {project.modules.filter((m) => selectedModules.has(m.id)).map((m) => (
+        {trackableModules.filter((m) => selectedModules.has(m.id)).map((m) => (
           <StatCard key={m.id} module={m} rows={rows} totalDays={totalDays} trackedDays={trackedDays} chartMode={chartMode} />
         ))}
       </div>
@@ -1382,6 +1454,10 @@ function Stats({ project, entries, savedDays }) {
   );
 }
 const chartColor = (module, label) => {
+  if (module.type === "rating") {
+    const level = Number.parseInt(label, 10);
+    return module.levels?.find((l) => l.value === level)?.color || module.color;
+  }
   if (module.options) return module.options.find((option) => option.label === label)?.color || module.color;
   if (module.type === "scale") return nearestAnchor(module.anchors, Number.parseInt(label, 10))?.color || module.color;
   return module.color;
@@ -1566,6 +1642,12 @@ function StatCard({ module, rows, totalDays, trackedDays, chartMode }) {
           definition: nearestAnchor(module.anchors, i).label,
           count: values.filter((v) => v === i).length,
         }))
+      : module.type === "rating"
+        ? Array.from({ length: module.max || 5 }, (_, i) => ({
+            label: `${i + 1}/${module.max || 5}`,
+            definition: module.levels?.[i]?.label || "",
+            count: values.filter((v) => v === i + 1).length,
+          }))
       : module.options
         ? module.options.map((o) => ({
             label: o.label,
@@ -1770,7 +1852,9 @@ function Settings({ project, onProject, onClose, onDelete }) {
             title:
               type === "scale"
                 ? "Nouvelle échelle"
-                : type === "text"
+                : type === "rating"
+                  ? "Nouvelle note"
+                  : type === "text"
                   ? "Nouvelles notes"
                   : type === "check"
                     ? "Nouvelle case"
@@ -1785,6 +1869,16 @@ function Settings({ project, onProject, onClose, onDelete }) {
                     { value: 10, label: "Haut", color: palette[2] },
                   ],
                 }
+              : type === "rating"
+                ? {
+                    shape: "star",
+                    max: 5,
+                    levels: Array.from({ length: 5 }, (_, i) => ({
+                      value: i + 1,
+                      label: "",
+                      color: palette[i % palette.length],
+                    })),
+                  }
               : type === "number"
                 ? {
                     fields: [{ id: "valeur", label: "Valeur", unit: "", color: palette[0] }],
@@ -1875,7 +1969,9 @@ function Settings({ project, onProject, onClose, onDelete }) {
                     m.type === "multi" ||
                     m.type === "check"
                       ? `${m.options?.length || 0} options`
-                      : m.type}
+                      : m.type === "rating"
+                        ? `note sur ${m.max || 5}`
+                        : m.type}
                   </small>
                   <Pencil size={15} />
                 </button>
@@ -1892,6 +1988,9 @@ function Settings({ project, onProject, onClose, onDelete }) {
           </button>
           <button onClick={() => add("scale")}>
             <Plus size={16} /> échelle
+          </button>
+          <button onClick={() => add("rating")}>
+            <Plus size={16} /> note
           </button>
           <button onClick={() => add("number")}>
             <Plus size={16} /> chiffres
@@ -1997,6 +2096,73 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
           onChange={(e) => patch({ color: e.target.value })}
         />
       </label>
+      {module.type === "rating" && (
+        <div className="edit-options">
+          <div className="settings-label">Forme de la note</div>
+          <div className="rating-shape-picker">
+            {[
+              ["star", "Étoile", Star],
+              ["heart", "Cœur", Heart],
+              ["wine", "Verre de vin", Wine],
+            ].map(([shape, label, Icon]) => (
+              <button
+                key={shape}
+                className={module.shape === shape || (!module.shape && shape === "star") ? "active" : ""}
+                onClick={() => patch({ shape })}
+              >
+                <Icon size={16} /> {label}
+              </button>
+            ))}
+          </div>
+          <label className="rating-max-picker">
+            Nombre de repères
+            <input
+              type="number"
+              min="2"
+              max="10"
+              value={module.max || 5}
+              onChange={(e) => {
+                const max = Math.min(10, Math.max(2, Number(e.target.value) || 5));
+                const levels = Array.from({ length: max }, (_, i) => ({
+                  value: i + 1,
+                  label: module.levels?.[i]?.label || "",
+                  color: module.levels?.[i]?.color || palette[i % palette.length],
+                }));
+                patch({ max, levels });
+              }}
+            />
+          </label>
+          <div className="settings-label">Chaque repère</div>
+          {(module.levels || []).map((level, i) => (
+            <div key={level.value}>
+              <input
+                type="color"
+                value={level.color}
+                onChange={(e) =>
+                  patch({
+                    levels: module.levels.map((l, idx) =>
+                      idx === i ? { ...l, color: e.target.value } : l,
+                    ),
+                  })
+                }
+                aria-label={`Couleur du repère ${level.value}`}
+              />
+              <span className="rating-level-name">{level.value}/{module.max || 5}</span>
+              <input
+                value={level.label || ""}
+                onChange={(e) =>
+                  patch({
+                    levels: module.levels.map((l, idx) =>
+                      idx === i ? { ...l, label: e.target.value } : l,
+                    ),
+                  })
+                }
+                placeholder="Mauvais, incroyable..."
+              />
+            </div>
+          ))}
+        </div>
+      )}
       {module.fields && (
         <div className="edit-options">
           <div className="settings-label">Sous-champs</div>
