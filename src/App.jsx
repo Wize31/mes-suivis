@@ -1802,6 +1802,15 @@ function Settings({ project, onProject, onClose, onDelete }) {
   const [editing, setEditing] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
   const pressTimer = useRef(null);
+  const projectHistory = useRef([]);
+  const mutateProject = (patch) => {
+    projectHistory.current.push(project);
+    onProject(patch);
+  };
+  const undoProjectChange = () => {
+    if (!projectHistory.current.length) return;
+    onProject(projectHistory.current.pop());
+  };
   const patchModule = (m) =>
     onProject({ modules: project.modules.map((x) => (x.id === m.id ? m : x)) });
   const stopDragging = () => {
@@ -1829,7 +1838,7 @@ function Settings({ project, onProject, onClose, onDelete }) {
     const modules = [...project.modules];
     const [moved] = modules.splice(fromIndex, 1);
     modules.splice(toIndex, 0, moved);
-    onProject({ modules });
+    mutateProject({ modules });
   };
   const add = (type) => {
     const m =
@@ -1897,6 +1906,10 @@ function Settings({ project, onProject, onClose, onDelete }) {
     onProject({ modules: [...project.modules, m] });
     setEditing(m.id);
   };
+  const deleteModule = (id) => {
+    mutateProject({ modules: project.modules.filter((x) => x.id !== id) });
+    if (editing === id) setEditing(null);
+  };
   return (
     <div className="drawer-backdrop" onClick={onClose}>
       <aside className="settings-drawer" onClick={(e) => e.stopPropagation()}>
@@ -1947,12 +1960,7 @@ function Settings({ project, onProject, onClose, onDelete }) {
                 module={m}
                 onChange={patchModule}
                 onClose={() => setEditing(null)}
-                onDelete={() => {
-                  onProject({
-                    modules: project.modules.filter((x) => x.id !== m.id),
-                  });
-                  setEditing(null);
-                }}
+                onDelete={() => deleteModule(m.id)}
               />
             ) : (
               <div
@@ -1982,6 +1990,16 @@ function Settings({ project, onProject, onClose, onDelete }) {
                         : m.type}
                   </small>
                   <Pencil size={15} />
+                </button>
+                <button
+                  className="module-quick-delete"
+                  aria-label={`Supprimer ${m.title}`}
+                  title="Supprimer ce suivi"
+                  onClick={() => {
+                    if (confirm(`Supprimer le suivi « ${m.title} » ?`)) deleteModule(m.id);
+                  }}
+                >
+                  <Trash2 size={15} />
                 </button>
               </div>
             )}
@@ -2016,14 +2034,25 @@ function Settings({ project, onProject, onClose, onDelete }) {
             <Plus size={16} /> texte
           </button>
         </div>
-        <button
-          className="delete-project"
-          onClick={() => {
-            if (confirm("Supprimer ce projet ?")) onDelete();
-          }}
-        >
-          <Trash2 size={15} /> Supprimer le projet
-        </button>
+        <div className="settings-bottom-actions">
+          <button
+            className="delete-project"
+            onClick={() => {
+              if (confirm("Supprimer ce projet ?")) onDelete();
+            }}
+          >
+            <Trash2 size={15} /> Supprimer le projet
+          </button>
+          <button
+            className="undo-small"
+            onClick={undoProjectChange}
+            disabled={!projectHistory.current.length}
+            aria-label="Revenir à la modification précédente"
+            title="Annuler la dernière modification"
+          >
+            <Undo2 size={16} />
+          </button>
+        </div>
       </aside>
     </div>
   );
@@ -2387,7 +2416,7 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
       )}
       <div className="editor-actions">
         <button className="delete-small" onClick={onDelete}>
-          <Trash2 size={14} /> Supprimer
+          <Trash2 size={14} /> Supprimer ce suivi
         </button>
         <button
           className="undo-small"
