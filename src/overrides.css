@@ -6,6 +6,8 @@ input[type=color]::-moz-color-swatch{border:0;border-radius:50%}
 html.dark{filter:invert(1) hue-rotate(180deg);background:#fffaf5}
 html.dark img,html.dark input[type=color]{filter:invert(1) hue-rotate(180deg)}
 html.dark h1,html.dark h2,html.dark h3{filter:invert(1) hue-rotate(180deg);color:#be817d}
+html.dark .home h1{color:#f5f0ec}
+html.dark .home h1 em{color:#be817d}
 html.dark small,html.dark p{filter:invert(1) hue-rotate(180deg);color:#f5f0ec}
 html.dark .project-tile:before,
 html.dark .tracker-dot,
