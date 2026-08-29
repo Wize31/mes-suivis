@@ -228,12 +228,26 @@ const persistState = (next) => {
   } catch {
   }
 };
+const loadUserName = () => {
+  try {
+    return localStorage.getItem("mes-suivis-name") || "";
+  } catch {
+    return "";
+  }
+};
+const persistUserName = (name) => {
+  try {
+    localStorage.setItem("mes-suivis-name", name);
+  } catch {
+  }
+};
 
 function App() {
   const [state, setState] = useState(loadState);
   const [projectId, setProjectId] = useState(null);
   const [date, setDate] = useState(new Date());
   const [view, setView] = useState("today");
+  const [userName, setUserName] = useState(loadUserName);
   useEffect(() => {
     persistState(state);
     const flush = () => persistState(state);
@@ -283,9 +297,19 @@ function App() {
     });
   if (!project)
     return (
-      <Home
-        projects={state.projects}
-        onOpen={setProjectId}
+      <>
+        {!userName && (
+          <NamePrompt
+            onSave={(name) => {
+              persistUserName(name);
+              setUserName(name);
+            }}
+          />
+        )}
+        <Home
+          userName={userName}
+          projects={state.projects}
+          onOpen={setProjectId}
         onCreate={(p) => {
           const next = { ...p, id: uid("project"), modules: [] };
           setState((s) => ({ ...s, projects: [...s.projects, next] }));
@@ -296,7 +320,8 @@ function App() {
             projects: s.projects.filter((p) => p.id !== id),
           }))
         }
-      />
+        />
+      </>
     );
   const entry = state.entries[`${projectId}:${keyFor(date)}`] || {};
   return (
@@ -324,7 +349,7 @@ function App() {
   );
 }
 
-function Home({ projects, onOpen, onCreate, onDelete }) {
+function Home({ userName, projects, onOpen, onCreate, onDelete }) {
   const [modal, setModal] = useState(false);
   return (
     <main className="home page-width">
@@ -334,7 +359,7 @@ function Home({ projects, onOpen, onCreate, onDelete }) {
       <header className="home-head">
         <div>
           <h1>
-            Qu'est-ce qu'on suit
+            Qu'est-ce qu'on suit{userName ? ` « ${userName} »` : ""}
             <br />
             <em>aujourd'hui ?</em>
           </h1>
@@ -2312,6 +2337,39 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
         <button className="done" onClick={onClose}>
           Terminé
         </button>
+      </div>
+    </div>
+  );
+}
+
+function NamePrompt({ onSave }) {
+  const [name, setName] = useState("");
+  return (
+    <div className="modal-backdrop">
+      <div className="modal">
+        <p className="eyebrow">bienvenue</p>
+        <h2>Comment devons-nous t'appeler ?</h2>
+        <div className="modal-fields">
+          <input
+            className="name-input"
+            autoFocus
+            placeholder="Ton prénom"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && name.trim()) onSave(name.trim());
+            }}
+          />
+        </div>
+        <div className="modal-actions">
+          <button
+            className="done"
+            disabled={!name.trim()}
+            onClick={() => onSave(name.trim())}
+          >
+            Continuer
+          </button>
+        </div>
       </div>
     </div>
   );
