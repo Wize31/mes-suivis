@@ -249,6 +249,13 @@ function App() {
   const [view, setView] = useState("today");
   const [userName, setUserName] = useState(() => loadUserName() || "");
   const [nameAsked, setNameAsked] = useState(() => loadUserName() !== null);
+  const [darkMode, setDarkMode] = useState(
+    () => localStorage.getItem("mes-suivis-theme") === "dark",
+  );
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", darkMode);
+    localStorage.setItem("mes-suivis-theme", darkMode ? "dark" : "light");
+  }, [darkMode]);
   useEffect(() => {
     persistState(state);
     const flush = () => persistState(state);
@@ -310,6 +317,12 @@ function App() {
         )}
         <Home
           userName={userName}
+          darkMode={darkMode}
+          onUpdateName={(name) => {
+            persistUserName(name);
+            setUserName(name);
+          }}
+          onToggleDarkMode={setDarkMode}
           projects={state.projects}
           onOpen={setProjectId}
         onCreate={(p) => {
@@ -351,12 +364,16 @@ function App() {
   );
 }
 
-function Home({ userName, projects, onOpen, onCreate, onDelete }) {
+function Home({ userName, darkMode, onUpdateName, onToggleDarkMode, projects, onOpen, onCreate, onDelete }) {
   const [modal, setModal] = useState(false);
+  const [appSettings, setAppSettings] = useState(false);
   return (
     <main className="home page-width">
       <div className="brand-mark">
         <Sparkles size={18} /> mes suivis
+        <button className="icon-button home-settings" onClick={() => setAppSettings(true)} aria-label="Réglages de l'application">
+          <Settings2 size={19} />
+        </button>
       </div>
       <header className="home-head">
         <div>
@@ -427,6 +444,18 @@ function Home({ userName, projects, onOpen, onCreate, onDelete }) {
             onCreate(p);
             setModal(false);
           }}
+        />
+      )}
+      {appSettings && (
+        <AppSettingsModal
+          userName={userName}
+          darkMode={darkMode}
+          onClose={() => setAppSettings(false)}
+          onSave={(name) => {
+            onUpdateName(name);
+            setAppSettings(false);
+          }}
+          onToggleDarkMode={onToggleDarkMode}
         />
       )}
     </main>
@@ -1269,6 +1298,7 @@ function LegacyHistory({ project, entries, onPick }) {
 function Stats({ project, entries, savedDays }) {
   const [period, setPeriod] = useState("year");
   const [cursor, setCursor] = useState(new Date());
+  const [customWeek, setCustomWeek] = useState(null);
   const [chartMode, setChartMode] = useState("bars");
   const trackableModules = project.modules.filter((module) => module.type !== "text");
   const [selectedModules, setSelectedModules] = useState(
@@ -1276,13 +1306,22 @@ function Stats({ project, entries, savedDays }) {
   );
   const now = new Date();
   const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-  const start =
+  const regularWeekStart = new Date(
+    cursor.getFullYear(),
+    cursor.getMonth(),
+    cursor.getDate() - ((cursor.getDay() + 6) % 7),
+  );
+  const start = customWeek?.start
+    ? new Date(`${customWeek.start}T12:00:00`)
+    :
     period === "week"
-      ? new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() - ((cursor.getDay() + 6) % 7))
+      ? regularWeekStart
       : period === "month"
         ? new Date(cursor.getFullYear(), cursor.getMonth(), 1)
         : new Date(cursor.getFullYear(), 0, 1);
-  const end =
+  const end = customWeek?.end
+    ? new Date(new Date(`${customWeek.end}T12:00:00`).getFullYear(), new Date(`${customWeek.end}T12:00:00`).getMonth(), new Date(`${customWeek.end}T12:00:00`).getDate() + 1)
+    :
     period === "week"
       ? new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7)
       : period === "month"
@@ -1332,7 +1371,10 @@ function Stats({ project, entries, savedDays }) {
           ].map(([id, label]) => (
             <button
               className={period === id ? "active" : ""}
-              onClick={() => setPeriod(id)}
+              onClick={() => {
+                setPeriod(id);
+                setCustomWeek(null);
+              }}
               key={id}
             >
               {label}
@@ -1340,6 +1382,12 @@ function Stats({ project, entries, savedDays }) {
           ))}
         </div>
       </div>
+      {period === "week" && (
+        <div className="stats-week-range">
+          <label>Début <input type="date" value={customWeek?.start || keyFor(regularWeekStart)} onChange={(event) => setCustomWeek((current) => ({ start: event.target.value, end: current?.end || keyFor(weekEnd) }))} /></label>
+          <label>Fin <input type="date" min={customWeek?.start || keyFor(regularWeekStart)} value={customWeek?.end || keyFor(weekEnd)} onChange={(event) => setCustomWeek((current) => ({ start: current?.start || keyFor(regularWeekStart), end: event.target.value }))} /></label>
+        </div>
+      )}
       <div className="history-nav">
         <button className="icon-button" onClick={() => moveCursor(-1)}>
           <ChevronLeft />
@@ -1408,12 +1456,18 @@ const chartColor = (module, label) => {
 };
 const pieGradient = (module, buckets, totalDays) => {
   let cursor = 0;
-  const segments = buckets.filter((bucket) => bucket.count).map((bucket) => {
-    const start = cursor / totalDays * 100;
+  const chartTotal = module.type === "multi"
+    ? buckets.reduce((total, bucket) => total + bucket.count, 0)
+    : totalDays;
+  const segments = [...buckets]
+    .filter((bucket) => bucket.count)
+    .sort((first, second) => second.count - first.count)
+    .map((bucket) => {
+    const start = cursor / chartTotal * 100;
     cursor += bucket.count;
-    return `${chartColor(module, bucket.label)} ${start}% ${cursor / totalDays * 100}%`;
+    return `${chartColor(module, bucket.label)} ${start}% ${cursor / chartTotal * 100}%`;
   });
-  if (cursor < totalDays) segments.push(`#eee4df ${cursor / totalDays * 100}% 100%`);
+  if (cursor < chartTotal) segments.push(`#eee4df ${cursor / chartTotal * 100}% 100%`);
   return `conic-gradient(${segments.join(", ")})`;
 };
 const formatStatNumber = (value) =>
@@ -1480,6 +1534,10 @@ function StatCard({ module, rows, totalDays, trackedDays, chartMode }) {
     if (chartMode === "pie") {
       const daysWithData = values.filter((value) => hasNumberValue(module, value)).length;
       const daysWithoutData = Math.max(totalDays - daysWithData, 0);
+      const workSummary = module.title === "Travail" ? workTotals(module, values) : null;
+      const tipRatio = workSummary?.hours
+        ? (workSummary.tips / (workSummary.total - workSummary.tips)) * 100
+        : 0;
       const dataLabel = module.title === "Travail"
         ? "Jours travaillés"
         : module.fields?.length === 1
@@ -1502,8 +1560,13 @@ function StatCard({ module, rows, totalDays, trackedDays, chartMode }) {
             <span><i style={{ background: "#eee4df" }} />Jours sans données</span>
           </div>
           <div className="work-stat-summary">
-            <div><span>{dataLabel}</span><strong>{daysWithData}/{totalDays}</strong></div>
-            <div><span>Jours sans données</span><strong>{daysWithoutData}/{totalDays}</strong></div>
+            <div><span>{dataLabel}</span><strong>{daysWithData}/{totalDays} · {((daysWithData / totalDays) * 100).toFixed(0)} %</strong></div>
+            <div><span>Jours sans données</span><strong>{daysWithoutData}/{totalDays} · {((daysWithoutData / totalDays) * 100).toFixed(0)} %</strong></div>
+            {workSummary && <>
+              <div><span>Heures totales</span><strong>{formatStatNumber(workSummary.hours)} h</strong></div>
+              <div><span>Salaire total</span><strong>{formatStatNumber(workSummary.total - workSummary.tips)} $</strong></div>
+              <div><span>Pourboires / salaire</span><strong>{formatStatNumber(tipRatio)} %</strong></div>
+            </>}
           </div>
         </article>
       );
@@ -1662,8 +1725,9 @@ function StatCard({ module, rows, totalDays, trackedDays, chartMode }) {
       </small>
       {!values.length && <p>Aucune sélection pour cette période.</p>}
       {chartMode === "pie" && <div className="stat-pie" style={{ background: pieGradient(module, buckets, totalDays) }} aria-label={`Graphique de ${module.title}`} />}
-      {buckets
-        .filter((b) => b.count)
+      {(chartMode === "pie"
+        ? [...buckets].filter((bucket) => bucket.count).sort((first, second) => second.count - first.count)
+        : buckets.filter((bucket) => bucket.count))
         .map((bucket) => (
           <div className="stat-row" key={bucket.label}>
             <span className="stat-label">
@@ -1857,19 +1921,36 @@ function Settings({ project, onProject, onClose, onDelete }) {
             <X />
           </button>
         </div>
-        <label className="project-edit">
-          <span>Projet</span>
-          <input
-            value={project.name}
-            onChange={(e) => onProject({ name: e.target.value })}
-          />
-          <input
-            className="emoji-input"
-            value={project.emoji}
-            onChange={(e) => onProject({ emoji: e.target.value })}
-            maxLength="2"
-          />
-        </label>
+        <div className="project-settings-fields">
+          <label>
+            <span>Nom du projet</span>
+            <input
+              value={project.name}
+              onChange={(e) => onProject({ name: e.target.value })}
+            />
+          </label>
+          <div className="project-settings-compact">
+            <label>
+              <span>Icône</span>
+              <input
+                className="emoji-input"
+                value={project.emoji}
+                onChange={(e) => onProject({ emoji: e.target.value })}
+                maxLength="2"
+              />
+            </label>
+            <label>
+              <span>Couleur</span>
+              <input
+                className="project-color-input"
+                type="color"
+                value={project.color}
+                onChange={(e) => onProject({ color: e.target.value })}
+                aria-label="Couleur du projet"
+              />
+            </label>
+          </div>
+        </div>
         <div className="settings-label">Tes suivis</div>
         {project.modules.map((m) => (
           <div
@@ -2373,26 +2454,79 @@ function NamePrompt({ onSave }) {
   );
 }
 
+function AppSettingsModal({ userName, darkMode, onClose, onSave, onToggleDarkMode }) {
+  const [name, setName] = useState(userName);
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(event) => event.stopPropagation()}>
+        <p className="eyebrow">réglages</p>
+        <h2>Ton profil</h2>
+        <div className="modal-fields">
+          <input
+            className="name-input"
+            autoFocus
+            placeholder="Ton prénom"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </div>
+        <label className="dark-mode-toggle">
+          <span>Mode sombre</span>
+          <input
+            type="checkbox"
+            checked={darkMode}
+            onChange={(event) => onToggleDarkMode(event.target.checked)}
+          />
+        </label>
+        <div className="modal-actions">
+          <button onClick={onClose}>Annuler</button>
+          <button className="done" onClick={() => onSave(name.trim())}>Enregistrer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProjectModal({ onClose, onSave }) {
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("✨");
+  const [color, setColor] = useState(palette[4]);
   return (
     <div className="modal-backdrop">
       <div className="modal">
         <p className="eyebrow">un nouvel espace</p>
         <h2>Créer un projet</h2>
-        <div className="modal-fields">
-          <input
-            value={emoji}
-            onChange={(e) => setEmoji(e.target.value)}
-            maxLength="2"
-          />
-          <input
-            autoFocus
-            placeholder="Nom du projet"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+        <div className="project-settings-fields modal-project-fields">
+          <label>
+            <span>Nom du projet</span>
+            <input
+              autoFocus
+              placeholder="Nom du projet"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          <div className="project-settings-compact">
+            <label>
+              <span>Icône</span>
+              <input
+                className="emoji-input"
+                value={emoji}
+                onChange={(e) => setEmoji(e.target.value)}
+                maxLength="2"
+              />
+            </label>
+            <label>
+              <span>Couleur</span>
+              <input
+                className="project-color-input"
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                aria-label="Couleur du projet"
+              />
+            </label>
+          </div>
         </div>
         <div className="modal-actions">
           <button onClick={onClose}>Annuler</button>
@@ -2400,7 +2534,7 @@ function ProjectModal({ onClose, onSave }) {
             className="done"
             disabled={!name.trim()}
             onClick={() =>
-              onSave({ name: name.trim(), emoji, color: palette[4] })
+              onSave({ name: name.trim(), emoji, color })
             }
           >
             Créer
