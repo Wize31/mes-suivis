@@ -666,7 +666,7 @@ function ValueEditor({ module, value, onChange }) {
   }
   if (module.type === "scale") {
     const n = typeof value === "number" ? value : 5;
-    const scaleAnchors = [...(module.anchors || [])].sort((a, b) => a.value - b.value);
+    const scaleAnchors = sortAnchors(module.anchors || []);
     const scaleGradient = scaleAnchors.length
       ? `linear-gradient(to right, ${scaleAnchors.map((anchor) => `${anchor.color} ${anchor.value * 10}%`).join(", ")})`
       : module.color;
@@ -688,9 +688,8 @@ function ValueEditor({ module, value, onChange }) {
           <span>{nearestAnchor(module.anchors, n)?.label}</span>
         </div>
         <div className="anchor-labels">
-          {module.anchors?.map((a) => (
-            <span key={a.value}>{a.label}</span>
-          ))}
+          <span>{scaleAnchors[0]?.label}</span>
+          <span>{scaleAnchors.at(-1)?.label}</span>
         </div>
       </div>
     );
@@ -807,6 +806,8 @@ const nearestAnchor = (anchors = [], n) =>
   [...anchors].sort(
     (a, b) => Math.abs(a.value - n) - Math.abs(b.value - n),
   )[0] || { label: "" };
+const sortAnchors = (anchors) =>
+  [...anchors].sort((first, second) => first.value - second.value);
 const formulaName = (name) =>
   name
     .normalize("NFD")
@@ -1956,7 +1957,9 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
     });
   const patchAnchor = (index, p) =>
     patch({
-      anchors: module.anchors.map((a, i) => (i === index ? { ...a, ...p } : a)),
+      anchors: sortAnchors(
+        module.anchors.map((a, i) => (i === index ? { ...a, ...p } : a)),
+      ),
     });
   const patchField = (id, p) =>
     patch({
@@ -2221,10 +2224,10 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
             className="add-option"
             onClick={() =>
               patch({
-                anchors: [
+                anchors: sortAnchors([
                   ...module.anchors,
                   { value: 5, label: "Repère", color: palette[1] },
-                ],
+                ]),
               })
             }
           >
