@@ -61,3 +61,5 @@ html.dark .undo-action{background:#211c1a;border-color:#67554f;color:#f5f0ec}
 .duration-input input:focus{outline:none}
 .duration-input b{font-weight:600;color:#a08c85}
 html.dark .duration-input{background:#211c1a;border-color:#67554f}
+.field-kind{flex:0 0 auto;border:1px solid #dfd1c9;background:#fffdfb;color:#806e68;padding:7px 4px;font-size:11px;max-width:100px}
+html.dark .field-kind{background:#211c1a;border-color:#67554f;color:#f5f0ec}

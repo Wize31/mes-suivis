@@ -2351,6 +2351,19 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
                 onChange={(e) => patchField(f.id, { unit: e.target.value })}
                 placeholder="unité"
               />
+              <select
+                className="field-kind"
+                value={f.kind === "duration" ? "duration" : "number"}
+                onChange={(e) =>
+                  patchField(f.id, {
+                    kind: e.target.value === "duration" ? "duration" : null,
+                  })
+                }
+                aria-label={`Format de ${f.label}`}
+              >
+                <option value="number">Chiffre</option>
+                <option value="duration">Durée (6h23)</option>
+              </select>
               <button
                 onClick={() =>
                   patch({ fields: module.fields.filter((x) => x.id !== f.id) })
