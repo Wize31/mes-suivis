@@ -63,5 +63,5 @@ html.dark .undo-action{background:#211c1a;border-color:#67554f;color:#f5f0ec}
 html.dark .duration-input{background:#211c1a;border-color:#67554f}
 .field-kind{flex:0 0 auto;border:1px solid #dfd1c9;background:#fffdfb;color:#806e68;padding:7px 4px;font-size:11px;max-width:100px}
 html.dark .field-kind{background:#211c1a;border-color:#67554f;color:#f5f0ec}
-.edit-options .field-unit{flex:0 0 46px!important;width:46px;min-width:0;padding:7px 5px;text-align:center}
+.edit-options .field-unit{flex:0 0 62px!important;width:62px;min-width:0;padding:7px 4px;font-size:12px;text-align:center}
 .field-kind{flex:0 0 auto;width:auto;max-width:none;padding:7px 3px;font-size:11px}
