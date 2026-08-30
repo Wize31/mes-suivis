@@ -2347,6 +2347,7 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
                 placeholder="Nom (ex. maki végé)"
               />
               <input
+                className="field-unit"
                 value={f.unit}
                 onChange={(e) => patchField(f.id, { unit: e.target.value })}
                 placeholder="unité"
@@ -2362,7 +2363,7 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
                 aria-label={`Format de ${f.label}`}
               >
                 <option value="number">Chiffre</option>
-                <option value="duration">Durée (6h23)</option>
+                <option value="duration">Durée</option>
               </select>
               <button
                 onClick={() =>
