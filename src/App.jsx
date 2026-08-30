@@ -1147,8 +1147,17 @@ function ExportTools({ project, entries }) {
     </div>
   );
 }
-function historyDays(period, cursor) {
+function historyDays(period, cursor, customWeek) {
   if (period === "week") {
+    if (customWeek?.start && customWeek?.end) {
+      const start = new Date(`${customWeek.start}T12:00:00`);
+      const end = new Date(`${customWeek.end}T12:00:00`);
+      const count = Math.max(1, Math.round((end - start) / 86400000) + 1);
+      return Array.from(
+        { length: count },
+        (_, index) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + index),
+      );
+    }
     const mondayOffset = (cursor.getDay() + 6) % 7;
     const monday = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() - mondayOffset);
     return Array.from({ length: 7 }, (_, index) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + index));
@@ -1164,26 +1173,41 @@ function historyDays(period, cursor) {
 function History({ project, entries, onPick }) {
   const [period, setPeriod] = useState("month");
   const [cursor, setCursor] = useState(new Date());
+  const [customWeek, setCustomWeek] = useState(null);
   const trackableModules = project.modules.filter((module) => module.type !== "text");
   const [selectedModules, setSelectedModules] = useState(
     () => new Set(trackableModules.map((module) => module.id)),
   );
-  const days = historyDays(period, cursor);
+  const days = historyDays(period, cursor, customWeek);
+  const regularWeekStart = new Date(
+    cursor.getFullYear(),
+    cursor.getMonth(),
+    cursor.getDate() - ((cursor.getDay() + 6) % 7),
+  );
+  const regularWeekEnd = new Date(
+    regularWeekStart.getFullYear(),
+    regularWeekStart.getMonth(),
+    regularWeekStart.getDate() + 6,
+  );
   const shift = period === "week" ? 7 : period === "month" ? 1 : 12;
   const title = period === "week" ? "Semaine" : period === "month" ? monthName(cursor) : `Année ${cursor.getFullYear()}`;
-  const move = (amount) => setCursor((date) => new Date(date.getFullYear(), date.getMonth() + (period === "year" ? amount * 12 : period === "month" ? amount : 0), date.getDate() + (period === "week" ? amount * shift : 0)));
+  const move = (amount) => {
+    setCustomWeek(null);
+    setCursor((date) => new Date(date.getFullYear(), date.getMonth() + (period === "year" ? amount * 12 : period === "month" ? amount : 0), date.getDate() + (period === "week" ? amount * shift : 0)));
+  };
   const visibleModules = trackableModules.filter((module) => selectedModules.has(module.id));
   return (
     <section className="summary-history page-width">
       <div className="summary-history-head">
         <div><p className="eyebrow">vue tableau</p><h1>Historique</h1><span>{title}</span></div>
-        <div className="period-tabs">{[["week", "Semaine"], ["month", "Mois"], ["year", "Année"]].map(([id, label]) => <button className={period === id ? "active" : ""} onClick={() => setPeriod(id)} key={id}>{label}</button>)}</div>
+        <div className="period-tabs">{[["week", "Semaine"], ["month", "Mois"], ["year", "Année"]].map(([id, label]) => <button className={period === id ? "active" : ""} onClick={() => { setPeriod(id); setCustomWeek(null); }} key={id}>{label}</button>)}</div>
       </div>
+      {period === "week" && <div className="stats-week-range"><label>Début <input type="date" value={customWeek?.start || keyFor(regularWeekStart)} onChange={(event) => setCustomWeek((current) => ({ start: event.target.value, end: current?.end || keyFor(regularWeekEnd) }))} /></label><label>Fin <input type="date" min={customWeek?.start || keyFor(regularWeekStart)} value={customWeek?.end || keyFor(regularWeekEnd)} onChange={(event) => setCustomWeek((current) => ({ start: current?.start || keyFor(regularWeekStart), end: event.target.value }))} /></label></div>}
       <div className="history-filters compact-filters">
         <div><strong>Suivis visibles</strong><div className="filter-actions"><button onClick={() => setSelectedModules(new Set(trackableModules.map((module) => module.id)))}>Tout</button><button onClick={() => setSelectedModules(new Set())}>Aucun</button></div></div>
         <div className="filter-options">{trackableModules.map((module) => <label key={module.id}><input type="checkbox" checked={selectedModules.has(module.id)} onChange={() => setSelectedModules((current) => { const next = new Set(current); next.has(module.id) ? next.delete(module.id) : next.add(module.id); return next; })} /><span style={{ background: module.color }} />{module.title}</label>)}</div>
       </div>
-      <div className="history-nav"><button className="icon-button" onClick={() => move(-1)}><ChevronLeft /></button><strong>{period === "week" ? `${days[0].getDate()} - ${days[6].getDate()} ${monthName(days[6])}` : title}</strong><button className="icon-button" onClick={() => move(1)}><ChevronRight /></button></div>
+      <div className="history-nav"><button className="icon-button" onClick={() => move(-1)}><ChevronLeft /></button><strong>{period === "week" ? `${days[0].getDate()} - ${days.at(-1).getDate()} ${monthName(days.at(-1))}` : title}</strong><button className="icon-button" onClick={() => move(1)}><ChevronRight /></button></div>
       <div className="summary-table-wrap"><table className="summary-table"><thead><tr><th>Date</th>{visibleModules.map((module) => <th key={module.id}><span style={{ background: module.color }} />{module.title}</th>)}</tr></thead><tbody>{days.map((day) => { const values = entries?.[`${project.id}:${keyFor(day)}`] || {}; return <tr key={keyFor(day)}><th><button onClick={() => onPick(day)}>{new Intl.DateTimeFormat("fr-CA", { day: "2-digit", month: "short" }).format(day)}</button></th>{visibleModules.map((module) => <td key={module.id}>{historyValueLabel(module, values[module.id])}</td>)}</tr>; })}</tbody></table></div>
       {!visibleModules.length && <div className="empty-state">Sélectionne au moins un suivi à afficher.</div>}
       <ExportTools project={project} entries={entries} />
@@ -1535,9 +1559,6 @@ function StatCard({ module, rows, totalDays, trackedDays, chartMode }) {
       const daysWithData = values.filter((value) => hasNumberValue(module, value)).length;
       const daysWithoutData = Math.max(totalDays - daysWithData, 0);
       const workSummary = module.title === "Travail" ? workTotals(module, values) : null;
-      const tipRatio = workSummary?.hours
-        ? (workSummary.tips / (workSummary.total - workSummary.tips)) * 100
-        : 0;
       const dataLabel = module.title === "Travail"
         ? "Jours travaillés"
         : module.fields?.length === 1
@@ -1564,8 +1585,9 @@ function StatCard({ module, rows, totalDays, trackedDays, chartMode }) {
             <div><span>Jours sans données</span><strong>{daysWithoutData}/{totalDays} · {((daysWithoutData / totalDays) * 100).toFixed(0)} %</strong></div>
             {workSummary && <>
               <div><span>Heures totales</span><strong>{formatStatNumber(workSummary.hours)} h</strong></div>
-              <div><span>Salaire total</span><strong>{formatStatNumber(workSummary.total - workSummary.tips)} $</strong></div>
-              <div><span>Pourboires / salaire</span><strong>{formatStatNumber(tipRatio)} %</strong></div>
+              <div><span>Pourboires</span><strong>{formatStatNumber(workSummary.tips)} $</strong></div>
+              <div><span>Salaire sans pourboires</span><strong>{formatStatNumber(workSummary.total - workSummary.tips)} $</strong></div>
+              <div><span>Rémunération totale</span><strong>{formatStatNumber(workSummary.total)} $</strong></div>
             </>}
           </div>
         </article>
