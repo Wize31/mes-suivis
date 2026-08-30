@@ -1,0 +1,1018 @@
+bash
+
+mkdir -p /home/claude && echo ok
+bash
+
+cat >> /home/claude/tracker-app.jsx << 'EOF'
+
+/* --------------------------------- small UI --------------------------------- */
+
+function ConfirmButton({ label, confirmLabel = "Confirmer ?", onConfirm, className, icon }) {
+  const [confirming, setConfirming] = useState(false);
+  const timer = useRef(null);
+  useEffect(() => () => timer.current && clearTimeout(timer.current), []);
+  return (
+    <button
+      type="button"
+      className={`tk-confirm-btn ${confirming ? "is-confirming" : ""} ${className || ""}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!confirming) {
+          setConfirming(true);
+          timer.current = setTimeout(() => setConfirming(false), 2800);
+        } else {
+          clearTimeout(timer.current);
+          setConfirming(false);
+          onConfirm();
+        }
+      }}
+      title={label}
+    >
+      {confirming ? confirmLabel : icon}
+    </button>
+  );
+}
+
+function ColorSwatchPicker({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="tk-swatch-wrap">
+      <button type="button" className="tk-swatch" style={{ background: value }} onClick={() => setOpen((o) => !o)} />
+      {open && (
+        <div className="tk-swatch-pop">
+          {PALETTE.map((c) => (
+            <button key={c} type="button" className="tk-swatch-opt" style={{ background: c }} onClick={() => { onChange(c); setOpen(false); }} />
+          ))}
+          <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="tk-color-input" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* -------------------------------- dot helpers -------------------------------- */
+
+function dotsForValue(module, value) {
+  if (value === undefined || value === null) return [];
+  if (module.type === "choice") {
+    const opt = (module.options || []).find((o) => o.id === value);
+    return opt ? [opt.color] : [];
+  }
+  if (module.type === "multiselect") {
+    const arr = Array.isArray(value) ? value : [];
+    return arr.map((id) => (module.options || []).find((o) => o.id === id)?.color).filter(Boolean);
+  }
+  if (module.type === "scale") {
+    if (typeof value !== "number") return [];
+    return [scaleColorAt(module.anchors || [], value)];
+  }
+  if (module.type === "composite") {
+    const hasAny = module.fields?.some((f) => value?.[f.id] !== undefined && value?.[f.id] !== "");
+    return hasAny ? [module.color] : [];
+  }
+  if (module.type === "text") {
+    return value && value.trim() ? [module.color] : [];
+  }
+  return [];
+}
+
+function summarizeValue(module, value) {
+  if (value === undefined || value === null) return "—";
+  if (module.type === "choice") {
+    const opt = (module.options || []).find((o) => o.id === value);
+    return opt ? opt.label : "—";
+  }
+  if (module.type === "multiselect") {
+    const arr = Array.isArray(value) ? value : [];
+    if (!arr.length) return "—";
+    return arr.map((id) => (module.options || []).find((o) => o.id === id)?.label).filter(Boolean).join(", ");
+  }
+  if (module.type === "scale") {
+    if (typeof value !== "number") return "—";
+    return `${value}/10 · ${scaleLabelAt(module.anchors || [], value)}`;
+  }
+  if (module.type === "composite") {
+    const parts = (module.fields || []).map((f) => (value?.[f.id] !== undefined && value?.[f.id] !== "" ? `${value[f.id]}${f.unit || ""}` : null)).filter(Boolean);
+    return parts.length ? parts.join(" · ") : "—";
+  }
+  if (module.type === "text") {
+    if (!value || !value.trim()) return "—";
+    return value.length > 60 ? value.slice(0, 60) + "…" : value;
+  }
+  return "—";
+}
+
+function computeComposite(module, value) {
+  const scope = {};
+  (module.fields || []).forEach((f) => { scope[f.id] = parseFloat(value?.[f.id]) || 0; });
+  const results = {};
+  (module.computed || []).forEach((c) => {
+    try { results[c.id] = math.evaluate(c.formula || "0", scope); }
+    catch (e) { results[c.id] = null; }
+  });
+  return results;
+}
+EOF
+echo done
+bash
+
+cat >> /home/claude/tracker-app.jsx << 'EOF'
+
+/* ------------------------------- value inputs -------------------------------- */
+
+function ChoiceInput({ module, value, onChange }) {
+  return (
+    <div className="tk-pill-row">
+      {(module.options || []).map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          className={`tk-pill ${value === o.id ? "is-active" : ""}`}
+          style={{ "--pill-color": o.color }}
+          onClick={() => onChange(value === o.id ? null : o.id)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function MultiSelectInput({ module, value, onChange }) {
+  const arr = Array.isArray(value) ? value : [];
+  const toggle = (id) => {
+    onChange(arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]);
+  };
+  return (
+    <div className="tk-pill-row">
+      {(module.options || []).map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          className={`tk-pill ${arr.includes(o.id) ? "is-active" : ""}`}
+          style={{ "--pill-color": o.color }}
+          onClick={() => toggle(o.id)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ScaleInput({ module, value, onChange }) {
+  const v = typeof value === "number" ? value : 5;
+  const sorted = [...(module.anchors || [])].sort((a, b) => a.value - b.value);
+  return (
+    <div className="tk-scale">
+      <input
+        type="range" min={0} max={10} step={1} value={v}
+        onChange={(e) => onChange(parseInt(e.target.value, 10))}
+        style={{ background: scaleGradientCss(module.anchors || []) }}
+        className="tk-range"
+      />
+      <div className="tk-scale-readout">
+        <span className="tk-scale-num" style={{ color: scaleColorAt(module.anchors || [], v) }}>{v}/10</span>
+        <span className="tk-scale-label">{scaleLabelAt(module.anchors || [], v)}</span>
+      </div>
+      <div className="tk-scale-anchors">
+        {sorted.map((a) => <span key={a.value}>{a.label}</span>)}
+      </div>
+    </div>
+  );
+}
+
+function CompositeInput({ module, value, onChange }) {
+  const v = value || {};
+  const computed = computeComposite(module, v);
+  return (
+    <div className="tk-composite">
+      {(module.fields || []).map((f) => (
+        <label key={f.id} className="tk-field-row">
+          <span>{f.label}</span>
+          <div className="tk-field-input">
+            <input
+              type="number" inputMode="decimal"
+              value={v[f.id] ?? ""}
+              onChange={(e) => onChange({ ...v, [f.id]: e.target.value })}
+              placeholder="0"
+            />
+            {f.unit && <span className="tk-unit">{f.unit}</span>}
+          </div>
+        </label>
+      ))}
+      {(module.computed || []).length > 0 && (
+        <div className="tk-computed-block">
+          {module.computed.map((c) => (
+            <div key={c.id} className="tk-computed-chip">
+              <span>{c.label}</span>
+              <strong>{computed[c.id] === null || computed[c.id] === undefined ? "—" : `${Math.round(computed[c.id] * 100) / 100}${c.unit || ""}`}</strong>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TextInput({ value, onChange }) {
+  const [local, setLocal] = useState(value || "");
+  useEffect(() => setLocal(value || ""), [value]);
+  return (
+    <textarea
+      className="tk-textarea"
+      rows={4}
+      value={local}
+      placeholder="Écris ce que tu veux te souvenir de cette journée…"
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => onChange(local)}
+    />
+  );
+}
+
+function ValueInput({ module, value, onChange }) {
+  if (module.type === "choice") return <ChoiceInput module={module} value={value} onChange={onChange} />;
+  if (module.type === "multiselect") return <MultiSelectInput module={module} value={value} onChange={onChange} />;
+  if (module.type === "scale") return <ScaleInput module={module} value={value} onChange={onChange} />;
+  if (module.type === "composite") return <CompositeInput module={module} value={value} onChange={onChange} />;
+  if (module.type === "text") return <TextInput value={value} onChange={onChange} />;
+  return null;
+}
+EOF
+echo done
+bash
+
+cat >> /home/claude/tracker-app.jsx << 'EOF'
+
+/* -------------------------------- module editor ------------------------------- */
+
+function OptionsEditor({ module, onChange }) {
+  const options = module.options || [];
+  const update = (id, patch) => onChange({ ...module, options: options.map((o) => (o.id === id ? { ...o, ...patch } : o)) });
+  const remove = (id) => onChange({ ...module, options: options.filter((o) => o.id !== id) });
+  const add = () => onChange({ ...module, options: [...options, { id: uid("opt"), label: "Nouvelle option", color: PALETTE[options.length % PALETTE.length] }] });
+  return (
+    <div className="tk-editor-block">
+      <div className="tk-editor-block-title">Options</div>
+      {options.map((o) => (
+        <div key={o.id} className="tk-option-row">
+          <ColorSwatchPicker value={o.color} onChange={(c) => update(o.id, { color: c })} />
+          <input className="tk-text-input" value={o.label} onChange={(e) => update(o.id, { label: e.target.value })} />
+          <button type="button" className="tk-icon-btn danger" onClick={() => remove(o.id)}><Minus size={15} /></button>
+        </div>
+      ))}
+      <button type="button" className="tk-add-line" onClick={add}><Plus size={14} /> Ajouter une option</button>
+    </div>
+  );
+}
+
+function AnchorsEditor({ module, onChange }) {
+  const anchors = module.anchors || [];
+  const update = (idx, patch) => {
+    const next = anchors.map((a, i) => (i === idx ? { ...a, ...patch } : a));
+    onChange({ ...module, anchors: next });
+  };
+  const remove = (idx) => onChange({ ...module, anchors: anchors.filter((_, i) => i !== idx) });
+  const add = () => onChange({ ...module, anchors: [...anchors, { value: 5, label: "Étape", color: PALETTE[anchors.length % PALETTE.length] }] });
+  return (
+    <div className="tk-editor-block">
+      <div className="tk-editor-block-title">Repères du dégradé (0 à 10)</div>
+      {anchors.map((a, idx) => (
+        <div key={idx} className="tk-option-row">
+          <ColorSwatchPicker value={a.color} onChange={(c) => update(idx, { color: c })} />
+          <input
+            className="tk-num-input" type="number" min={0} max={10}
+            value={a.value} onChange={(e) => update(idx, { value: Math.max(0, Math.min(10, parseInt(e.target.value || 0, 10))) })}
+          />
+          <input className="tk-text-input" value={a.label} onChange={(e) => update(idx, { label: e.target.value })} />
+          <button type="button" className="tk-icon-btn danger" onClick={() => remove(idx)}><Minus size={15} /></button>
+        </div>
+      ))}
+      <button type="button" className="tk-add-line" onClick={add}><Plus size={14} /> Ajouter un repère</button>
+    </div>
+  );
+}
+
+function CompositeEditor({ module, onChange }) {
+  const fields = module.fields || [];
+  const computed = module.computed || [];
+  const updateField = (id, patch) => onChange({ ...module, fields: fields.map((f) => (f.id === id ? { ...f, ...patch } : f)) });
+  const removeField = (id) => onChange({ ...module, fields: fields.filter((f) => f.id !== id) });
+  const addField = () => {
+    let base = "champ", n = fields.length + 1, id = slugify(`champ_${n}`);
+    while (fields.some((f) => f.id === id)) { n++; id = slugify(`champ_${n}`); }
+    onChange({ ...module, fields: [...fields, { id, label: "Nouveau champ", unit: "" }] });
+  };
+  const updateComputed = (id, patch) => onChange({ ...module, computed: computed.map((c) => (c.id === id ? { ...c, ...patch } : c)) });
+  const removeComputed = (id) => onChange({ ...module, computed: computed.filter((c) => c.id !== id) });
+  const addComputed = () => onChange({ ...module, computed: [...computed, { id: uid("calc"), label: "Résultat", formula: fields[0]?.id ? `${fields[0].id} * 1` : "0", unit: "" }] });
+
+  return (
+    <div className="tk-editor-block">
+      <div className="tk-editor-block-title">Champs saisis</div>
+      {fields.map((f) => (
+        <div key={f.id} className="tk-option-row">
+          <input className="tk-text-input" value={f.label} onChange={(e) => updateField(f.id, { label: e.target.value })} placeholder="Nom du champ" />
+          <input className="tk-unit-input" value={f.unit} onChange={(e) => updateField(f.id, { unit: e.target.value })} placeholder="unité" />
+          <button type="button" className="tk-icon-btn danger" onClick={() => removeField(f.id)}><Minus size={15} /></button>
+        </div>
+      ))}
+      <button type="button" className="tk-add-line" onClick={addField}><Plus size={14} /> Ajouter un champ</button>
+
+      <div className="tk-editor-block-title" style={{ marginTop: 14 }}>Calculs automatiques</div>
+      <div className="tk-hint">Variables disponibles : {fields.map((f) => f.id).join(", ") || "aucune"}</div>
+      {computed.map((c) => (
+        <div key={c.id} className="tk-computed-editor-row">
+          <input className="tk-text-input" value={c.label} onChange={(e) => updateComputed(c.id, { label: e.target.value })} placeholder="Nom du résultat" />
+          <div className="tk-formula-row">
+            <span>=</span>
+            <input className="tk-text-input" value={c.formula} onChange={(e) => updateComputed(c.id, { formula: e.target.value })} placeholder="ex: points * 4" />
+            <input className="tk-unit-input" value={c.unit} onChange={(e) => updateComputed(c.id, { unit: e.target.value })} placeholder="unité" />
+            <button type="button" className="tk-icon-btn danger" onClick={() => removeComputed(c.id)}><Minus size={15} /></button>
+          </div>
+        </div>
+      ))}
+      <button type="button" className="tk-add-line" onClick={addComputed}><Plus size={14} /> Ajouter un calcul</button>
+    </div>
+  );
+}
+
+function ModuleEditor({ module, onChange, onDelete, onClose }) {
+  return (
+    <div className="tk-module-editor">
+      <div className="tk-editor-header">
+        <ColorSwatchPicker value={module.color} onChange={(c) => onChange({ ...module, color: c })} />
+        <input className="tk-title-input" value={module.title} onChange={(e) => onChange({ ...module, title: e.target.value })} />
+        <span className="tk-type-badge">{TYPE_LABELS[module.type]}</span>
+      </div>
+      <input
+        className="tk-subtitle-input"
+        value={module.subtitle || ""}
+        placeholder="Sous-titre (optionnel)"
+        onChange={(e) => onChange({ ...module, subtitle: e.target.value })}
+      />
+
+      {(module.type === "choice" || module.type === "multiselect") && <OptionsEditor module={module} onChange={onChange} />}
+      {module.type === "scale" && <AnchorsEditor module={module} onChange={onChange} />}
+      {module.type === "composite" && <CompositeEditor module={module} onChange={onChange} />}
+
+      <div className="tk-editor-footer">
+        <ConfirmButton
+          label="Supprimer ce suivi"
+          icon={<><Trash2 size={14} /> Supprimer ce suivi</>}
+          confirmLabel="Confirmer la suppression"
+          onConfirm={onDelete}
+          className="tk-delete-module-btn"
+        />
+        <button type="button" className="tk-btn-primary" onClick={onClose}><Check size={15} /> Terminé</button>
+      </div>
+    </div>
+  );
+}
+EOF
+echo done
+bash
+
+cat >> /home/claude/tracker-app.jsx << 'EOF'
+
+/* ---------------------------------- Today ------------------------------------ */
+
+function ModuleCard({ module, value, onChange, expanded, onToggle }) {
+  const dots = dotsForValue(module, value);
+  return (
+    <div className={`tk-card ${expanded ? "is-open" : ""}`} style={{ "--card-color": module.color }}>
+      <button type="button" className="tk-card-head" onClick={onToggle}>
+        <span className="tk-card-dot" />
+        <span className="tk-card-titles">
+          <span className="tk-card-title">{module.title}</span>
+          {module.subtitle && <span className="tk-card-subtitle">{module.subtitle}</span>}
+        </span>
+        <span className="tk-card-summary">
+          {dots.length > 0 && (
+            <span className="tk-mini-dots">
+              {dots.slice(0, 5).map((c, i) => <span key={i} className="tk-mini-dot" style={{ background: c }} />)}
+            </span>
+          )}
+          <span className="tk-card-summary-text">{summarizeValue(module, value)}</span>
+        </span>
+      </button>
+      {expanded && (
+        <div className="tk-card-body">
+          <ValueInput module={module} value={value} onChange={onChange} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TodayView({ modules, date, setDate, dayData, onValueChange }) {
+  const [expandedId, setExpandedId] = useState(null);
+  const isToday = sameDay(date, new Date());
+  return (
+    <div className="tk-today">
+      <div className="tk-date-nav">
+        <button type="button" className="tk-icon-btn" onClick={() => setDate(addDays(date, -1))}><ChevronLeft size={18} /></button>
+        <div className="tk-date-label">
+          <span>{DAY_NAMES[(date.getDay() + 6) % 7]} {date.getDate()} {MONTH_NAMES[date.getMonth()]} {date.getFullYear()}</span>
+          {!isToday && <button type="button" className="tk-today-btn" onClick={() => setDate(new Date())}>Aujourd'hui</button>}
+        </div>
+        <button type="button" className="tk-icon-btn" onClick={() => setDate(addDays(date, 1))}><ChevronRight size={18} /></button>
+      </div>
+
+      {modules.length === 0 ? (
+        <div className="tk-empty">Aucun suivi encore. Ajoute-en un dans l'onglet Réglages.</div>
+      ) : (
+        <div className="tk-card-list">
+          {modules.map((m) => (
+            <ModuleCard
+              key={m.id}
+              module={m}
+              value={dayData[m.id]}
+              expanded={expandedId === m.id}
+              onToggle={() => setExpandedId(expandedId === m.id ? null : m.id)}
+              onChange={(v) => onValueChange(m.id, v)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* --------------------------------- History ------------------------------------ */
+
+function DayCell({ date, inMonth, isToday, modules, dayData, onClick, size }) {
+  const allDots = [];
+  modules.forEach((m) => dotsForValue(m, dayData?.[m.id]).forEach((c) => allDots.push(c)));
+  return (
+    <button
+      type="button"
+      className={`tk-day-cell ${size === "sm" ? "sm" : ""} ${inMonth === false ? "faded" : ""} ${isToday ? "is-today" : ""}`}
+      onClick={onClick}
+    >
+      <span className="tk-day-num">{date.getDate()}</span>
+      <span className="tk-day-dots">
+        {allDots.slice(0, 6).map((c, i) => <span key={i} className="tk-mini-dot" style={{ background: c }} />)}
+        {allDots.length > 6 && <span className="tk-day-more">+{allDots.length - 6}</span>}
+      </span>
+    </button>
+  );
+}
+
+function WeekView({ modules, anchorDate, getDayData, onPickDate, weekOffset, setWeekOffset }) {
+  const start = addDays(startOfWeek(anchorDate), weekOffset * 7);
+  const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  const today = new Date();
+  return (
+    <div className="tk-week">
+      <div className="tk-range-nav">
+        <button type="button" className="tk-icon-btn" onClick={() => setWeekOffset((w) => w - 1)}><ChevronLeft size={16} /></button>
+        <span>{days[0].getDate()} {MONTH_NAMES[days[0].getMonth()].slice(0,3)} — {days[6].getDate()} {MONTH_NAMES[days[6].getMonth()].slice(0,3)} {days[6].getFullYear()}</span>
+        <button type="button" className="tk-icon-btn" onClick={() => setWeekOffset((w) => w + 1)}><ChevronRight size={16} /></button>
+      </div>
+      <div className="tk-week-grid">
+        {days.map((d) => (
+          <div key={d.toISOString()} className="tk-week-col">
+            <div className="tk-week-day-name">{DAY_NAMES[(d.getDay() + 6) % 7]}</div>
+            <DayCell date={d} isToday={sameDay(d, today)} modules={modules} dayData={getDayData(d)} onClick={() => onPickDate(d)} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MonthView({ modules, anchorDate, getDayData, onPickDate, monthOffset, setMonthOffset }) {
+  const base = new Date(anchorDate.getFullYear(), anchorDate.getMonth() + monthOffset, 1);
+  const first = startOfMonth(base);
+  const gridStart = startOfWeek(first);
+  const totalDays = daysInMonth(base);
+  const lastDay = new Date(base.getFullYear(), base.getMonth(), totalDays);
+  const gridEnd = addDays(startOfWeek(lastDay), 6);
+  const cells = [];
+  let cur = new Date(gridStart);
+  while (cur <= gridEnd) { cells.push(new Date(cur)); cur = addDays(cur, 1); }
+  const today = new Date();
+  return (
+    <div className="tk-month">
+      <div className="tk-range-nav">
+        <button type="button" className="tk-icon-btn" onClick={() => setMonthOffset((m) => m - 1)}><ChevronLeft size={16} /></button>
+        <span>{MONTH_NAMES[base.getMonth()]} {base.getFullYear()}</span>
+        <button type="button" className="tk-icon-btn" onClick={() => setMonthOffset((m) => m + 1)}><ChevronRight size={16} /></button>
+      </div>
+      <div className="tk-month-weekdays">{DAY_NAMES.map((n) => <span key={n}>{n}</span>)}</div>
+      <div className="tk-month-grid">
+        {cells.map((d) => (
+          <DayCell
+            key={d.toISOString()} date={d} inMonth={d.getMonth() === base.getMonth()}
+            isToday={sameDay(d, today)} modules={modules} dayData={getDayData(d)}
+            onClick={() => onPickDate(d)} size="sm"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function YearStats({ modules, year, getDayData }) {
+  const stats = modules.map((m) => {
+    let daysWithData = 0;
+    if (m.type === "scale") {
+      let sum = 0, count = 0;
+      for (let mo = 0; mo < 12; mo++) {
+        const dim = new Date(year, mo + 1, 0).getDate();
+        for (let d = 1; d <= dim; d++) {
+          const v = getDayData(new Date(year, mo, d))[m.id];
+          if (typeof v === "number") { sum += v; count++; }
+        }
+      }
+      return { module: m, kind: "avg", value: count ? (sum / count).toFixed(1) : "—", count };
+    }
+    if (m.type === "composite") {
+      const totals = {};
+      (m.fields || []).forEach((f) => (totals[f.id] = 0));
+      (m.computed || []).forEach((c) => (totals[c.id] = 0));
+      let count = 0;
+      for (let mo = 0; mo < 12; mo++) {
+        const dim = new Date(year, mo + 1, 0).getDate();
+        for (let d = 1; d <= dim; d++) {
+          const v = getDayData(new Date(year, mo, d))[m.id];
+          if (v) {
+            count++;
+            (m.fields || []).forEach((f) => { totals[f.id] += parseFloat(v[f.id]) || 0; });
+            const comp = computeComposite(m, v);
+            (m.computed || []).forEach((c) => { totals[c.id] += comp[c.id] || 0; });
+          }
+        }
+      }
+      return { module: m, kind: "sum", totals, count };
+    }
+    if (m.type === "choice" || m.type === "multiselect") {
+      const counts = {};
+      (m.options || []).forEach((o) => (counts[o.id] = 0));
+      let count = 0;
+      for (let mo = 0; mo < 12; mo++) {
+        const dim = new Date(year, mo + 1, 0).getDate();
+        for (let d = 1; d <= dim; d++) {
+          const v = getDayData(new Date(year, mo, d))[m.id];
+          if (v) {
+            count++;
+            if (Array.isArray(v)) v.forEach((id) => { counts[id] = (counts[id] || 0) + 1; });
+            else counts[v] = (counts[v] || 0) + 1;
+          }
+        }
+      }
+      return { module: m, kind: "freq", counts, count };
+    }
+    if (m.type === "text") {
+      let count = 0;
+      for (let mo = 0; mo < 12; mo++) {
+        const dim = new Date(year, mo + 1, 0).getDate();
+        for (let d = 1; d <= dim; d++) {
+          const v = getDayData(new Date(year, mo, d))[m.id];
+          if (v && v.trim()) count++;
+        }
+      }
+      return { module: m, kind: "count", count };
+    }
+    return { module: m, kind: "none", count: 0 };
+  });
+
+  return (
+    <div className="tk-year-stats">
+      {stats.map(({ module: m, kind, ...s }) => (
+        <div key={m.id} className="tk-stat-card" style={{ "--card-color": m.color }}>
+          <div className="tk-stat-title"><span className="tk-card-dot" />{m.title}</div>
+          {kind === "avg" && <div className="tk-stat-body">Moyenne : <strong>{s.value}/10</strong> <span className="tk-stat-sub">({s.count} jours notés)</span></div>}
+          {kind === "sum" && (
+            <div className="tk-stat-body">
+              {[...(m.fields || []), ...(m.computed || [])].map((f) => (
+                <div key={f.id} className="tk-stat-line"><span>{f.label}</span><strong>{Math.round((s.totals[f.id] || 0) * 100) / 100}{f.unit || ""}</strong></div>
+              ))}
+              <span className="tk-stat-sub">{s.count} jours enregistrés</span>
+            </div>
+          )}
+          {kind === "freq" && (
+            <div className="tk-stat-body">
+              {(m.options || []).filter((o) => s.counts[o.id] > 0).sort((a, b) => s.counts[b.id] - s.counts[a.id]).map((o) => (
+                <div key={o.id} className="tk-stat-line"><span><span className="tk-mini-dot" style={{ background: o.color }} /> {o.label}</span><strong>{s.counts[o.id]}</strong></div>
+              ))}
+              {s.count === 0 && <span className="tk-stat-sub">Pas encore de données</span>}
+            </div>
+          )}
+          {kind === "count" && <div className="tk-stat-body">{s.count} jours avec une note</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function YearView({ modules, anchorDate, getDayData, onPickDate, yearOffset, setYearOffset }) {
+  const year = anchorDate.getFullYear() + yearOffset;
+  const today = new Date();
+  return (
+    <div className="tk-year">
+      <div className="tk-range-nav">
+        <button type="button" className="tk-icon-btn" onClick={() => setYearOffset((y) => y - 1)}><ChevronLeft size={16} /></button>
+        <span>{year}</span>
+        <button type="button" className="tk-icon-btn" onClick={() => setYearOffset((y) => y + 1)}><ChevronRight size={16} /></button>
+      </div>
+      <div className="tk-year-months">
+        {Array.from({ length: 12 }, (_, mo) => {
+          const base = new Date(year, mo, 1);
+          const dim = daysInMonth(base);
+          return (
+            <div key={mo} className="tk-year-month">
+              <div className="tk-year-month-title">{MONTH_NAMES[mo]}</div>
+              <div className="tk-year-month-grid">
+                {Array.from({ length: dim }, (_, i) => {
+                  const d = new Date(year, mo, i + 1);
+                  const dots = [];
+                  modules.forEach((m) => dotsForValue(m, getDayData(d)[m.id]).forEach((c) => dots.push(c)));
+                  return (
+                    <button
+                      key={i} type="button" onClick={() => onPickDate(d)}
+                      className={`tk-year-day ${sameDay(d, today) ? "is-today" : ""}`}
+                      style={{ background: dots[0] || "var(--tk-border)" }}
+                      title={`${i + 1} ${MONTH_NAMES[mo]}`}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <YearStats modules={modules} year={year} getDayData={getDayData} />
+    </div>
+  );
+}
+
+function HistoryView({ modules, date, setDate, setTab, getDayData }) {
+  const [range, setRange] = useState("semaine");
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [monthOffset, setMonthOffset] = useState(0);
+  const [yearOffset, setYearOffset] = useState(0);
+  const pick = (d) => { setDate(d); setTab("today"); };
+  return (
+    <div className="tk-history">
+      <div className="tk-range-tabs">
+        {["semaine", "mois", "année"].map((r) => (
+          <button key={r} type="button" className={`tk-range-tab ${range === r ? "is-active" : ""}`} onClick={() => setRange(r)}>{r}</button>
+        ))}
+      </div>
+      {range === "semaine" && <WeekView modules={modules} anchorDate={date} getDayData={getDayData} onPickDate={pick} weekOffset={weekOffset} setWeekOffset={setWeekOffset} />}
+      {range === "mois" && <MonthView modules={modules} anchorDate={date} getDayData={getDayData} onPickDate={pick} monthOffset={monthOffset} setMonthOffset={setMonthOffset} />}
+      {range === "année" && <YearView modules={modules} anchorDate={date} getDayData={getDayData} onPickDate={pick} yearOffset={yearOffset} setYearOffset={setYearOffset} />}
+    </div>
+  );
+}
+EOF
+echo done
+bash
+
+cat >> /home/claude/tracker-app.jsx << 'EOF'
+
+/* --------------------------------- Settings ------------------------------------ */
+
+function AddModuleMenu({ onAdd }) {
+  const [open, setOpen] = useState(false);
+  const types = [
+    { type: "choice", label: "Choix unique", desc: "Une option parmi plusieurs" },
+    { type: "multiselect", label: "Choix multiple", desc: "Plusieurs options à la fois" },
+    { type: "scale", label: "Échelle graduée", desc: "Note de 0 à 10 en dégradé" },
+    { type: "composite", label: "Chiffres + formule", desc: "Champs numériques et calculs" },
+    { type: "text", label: "Texte libre", desc: "Notes en texte" },
+  ];
+  return (
+    <div className="tk-add-module">
+      <button type="button" className="tk-btn-primary tk-add-module-toggle" onClick={() => setOpen((o) => !o)}>
+        <Plus size={16} /> Ajouter un suivi
+      </button>
+      {open && (
+        <div className="tk-add-module-menu">
+          {types.map((t) => (
+            <button key={t.type} type="button" className="tk-add-module-opt" onClick={() => { onAdd(t.type); setOpen(false); }}>
+              <span className="tk-add-module-opt-label">{t.label}</span>
+              <span className="tk-add-module-opt-desc">{t.desc}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsView({ modules, onModulesChange, project, onProjectChange, onDeleteProject }) {
+  const [editingId, setEditingId] = useState(null);
+
+  const updateModule = (id, patch) => onModulesChange(modules.map((m) => (m.id === id ? patch : m)));
+  const deleteModule = (id) => { onModulesChange(modules.filter((m) => m.id !== id)); setEditingId(null); };
+  const addModule = (type) => {
+    const m = blankModule(type);
+    onModulesChange([...modules, m]);
+    setEditingId(m.id);
+  };
+  const move = (id, dir) => {
+    const idx = modules.findIndex((m) => m.id === id);
+    const swapWith = idx + dir;
+    if (swapWith < 0 || swapWith >= modules.length) return;
+    const next = [...modules];
+    [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
+    onModulesChange(next);
+  };
+
+  return (
+    <div className="tk-settings">
+      <div className="tk-project-settings">
+        <div className="tk-editor-block-title">Ce projet</div>
+        <div className="tk-project-settings-row">
+          <input className="tk-emoji-input" value={project.emoji} maxLength={2} onChange={(e) => onProjectChange({ ...project, emoji: e.target.value })} />
+          <input className="tk-text-input" value={project.name} onChange={(e) => onProjectChange({ ...project, name: e.target.value })} />
+          <ColorSwatchPicker value={project.color} onChange={(c) => onProjectChange({ ...project, color: c })} />
+        </div>
+        <ConfirmButton
+          label="Supprimer ce projet"
+          icon={<><Trash2 size={14} /> Supprimer ce projet</>}
+          confirmLabel="Confirmer — tout sera supprimé"
+          onConfirm={onDeleteProject}
+          className="tk-delete-module-btn"
+        />
+      </div>
+
+      <div className="tk-editor-block-title" style={{ marginTop: 18 }}>Suivis</div>
+      <div className="tk-module-list">
+        {modules.map((m, idx) => (
+          <div key={m.id} className="tk-module-list-item" style={{ "--card-color": m.color }}>
+            {editingId === m.id ? (
+              <ModuleEditor module={m} onChange={(patch) => updateModule(m.id, patch)} onDelete={() => deleteModule(m.id)} onClose={() => setEditingId(null)} />
+            ) : (
+              <div className="tk-module-summary-row">
+                <span className="tk-card-dot" />
+                <span className="tk-module-summary-title">{m.title}</span>
+                <span className="tk-type-badge">{TYPE_LABELS[m.type]}</span>
+                <span className="tk-module-summary-actions">
+                  <button type="button" className="tk-icon-btn" disabled={idx === 0} onClick={() => move(m.id, -1)}>↑</button>
+                  <button type="button" className="tk-icon-btn" disabled={idx === modules.length - 1} onClick={() => move(m.id, 1)}>↓</button>
+                  <button type="button" className="tk-icon-btn" onClick={() => setEditingId(m.id)}><Pencil size={14} /></button>
+                </span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <AddModuleMenu onAdd={addModule} />
+    </div>
+  );
+}
+
+/* ---------------------------------- Home -------------------------------------- */
+
+function ProjectFormModal({ initial, onSave, onClose }) {
+  const [name, setName] = useState(initial?.name || "");
+  const [emoji, setEmoji] = useState(initial?.emoji || "✨");
+  const [color, setColor] = useState(initial?.color || PALETTE[0]);
+  return (
+    <div className="tk-modal-backdrop" onClick={onClose}>
+      <div className="tk-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="tk-modal-title">{initial ? "Modifier le projet" : "Nouveau projet"}</div>
+        <div className="tk-project-settings-row">
+          <input className="tk-emoji-input" value={emoji} maxLength={2} onChange={(e) => setEmoji(e.target.value)} />
+          <input className="tk-text-input" placeholder="Nom du projet" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          <ColorSwatchPicker value={color} onChange={setColor} />
+        </div>
+        <div className="tk-modal-actions">
+          <button type="button" className="tk-btn-ghost" onClick={onClose}>Annuler</button>
+          <button
+            type="button" className="tk-btn-primary"
+            onClick={() => { if (name.trim()) onSave({ ...(initial || {}), name: name.trim(), emoji, color }); }}
+          >
+            <Check size={15} /> Enregistrer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HomeScreen({ projects, onOpen, onCreate, onEdit, onDelete }) {
+  const [modal, setModal] = useState(null); // null | 'new' | project
+
+  return (
+    <div className="tk-home">
+      <div className="tk-home-header">
+        <Sparkles size={26} className="tk-home-icon" />
+        <h1>Mes suivis</h1>
+        <p>Choisis un projet, ou crées-en un nouveau.</p>
+      </div>
+      <div className="tk-project-grid">
+        {projects.map((p) => (
+          <div key={p.id} className="tk-project-card" style={{ "--card-color": p.color }}>
+            <button type="button" className="tk-project-card-main" onClick={() => onOpen(p)}>
+              <span className="tk-project-emoji">{p.emoji}</span>
+              <span className="tk-project-name">{p.name}</span>
+            </button>
+            <div className="tk-project-card-actions">
+              <button type="button" className="tk-icon-btn" onClick={() => setModal(p)}><Pencil size={14} /></button>
+              <ConfirmButton label="Supprimer" icon={<Trash2 size={14} />} onConfirm={() => onDelete(p.id)} />
+            </div>
+          </div>
+        ))}
+        <button type="button" className="tk-project-card tk-project-add" onClick={() => setModal("new")}>
+          <Plus size={22} />
+          <span>Nouveau projet</span>
+        </button>
+      </div>
+
+      {modal === "new" && (
+        <ProjectFormModal onClose={() => setModal(null)} onSave={(p) => { onCreate(p); setModal(null); }} />
+      )}
+      {modal && modal !== "new" && (
+        <ProjectFormModal initial={modal} onClose={() => setModal(null)} onSave={(p) => { onEdit(p); setModal(null); }} />
+      )}
+    </div>
+  );
+}
+EOF
+echo done
+bash
+
+cat >> /home/claude/tracker-app.jsx << 'EOF'
+
+/* ----------------------------------- App --------------------------------------- */
+
+function ProjectShell({ project, onBack, onProjectPatch, onDeleteProject }) {
+  const [tab, setTab] = useState("today");
+  const [date, setDate] = useState(new Date());
+  const [modules, setModules] = useState(null);
+  const [monthsCache, setMonthsCache] = useState({});
+  const loadingMonths = useRef(new Set());
+  const saveTimers = useRef({});
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const raw = await sGet(`modules:${project.id}`);
+      if (alive) setModules(raw ? JSON.parse(raw) : []);
+    })();
+    return () => { alive = false; };
+  }, [project.id]);
+
+  const ensureMonth = useCallback((mk) => {
+    if (monthsCache[mk] !== undefined || loadingMonths.current.has(mk)) return;
+    loadingMonths.current.add(mk);
+    (async () => {
+      const raw = await sGet(`entries:${project.id}:${mk}`);
+      setMonthsCache((prev) => ({ ...prev, [mk]: raw ? JSON.parse(raw) : {} }));
+      loadingMonths.current.delete(mk);
+    })();
+  }, [project.id, monthsCache]);
+
+  useEffect(() => { ensureMonth(monthKeyOf(date)); }, [date, ensureMonth]);
+
+  // preload surrounding months for smoother week/month/year browsing
+  useEffect(() => {
+    const d = new Date();
+    for (let i = -13; i <= 13; i++) {
+      const probe = new Date(d.getFullYear(), d.getMonth() + i, 1);
+      ensureMonth(monthKeyOf(probe));
+    }
+  }, [ensureMonth]);
+
+  const getDayData = useCallback((d) => {
+    const mk = monthKeyOf(d), dk = dayKeyOf(d);
+    return monthsCache[mk]?.[dk] || {};
+  }, [monthsCache]);
+
+  const scheduleSaveMonth = (mk, monthObj) => {
+    if (saveTimers.current[mk]) clearTimeout(saveTimers.current[mk]);
+    saveTimers.current[mk] = setTimeout(() => { sSet(`entries:${project.id}:${mk}`, JSON.stringify(monthObj)); }, 500);
+  };
+
+  const onValueChange = (moduleId, value) => {
+    const mk = monthKeyOf(date), dk = dayKeyOf(date);
+    setMonthsCache((prev) => {
+      const monthObj = { ...(prev[mk] || {}) };
+      const dayObj = { ...(monthObj[dk] || {}) };
+      dayObj[moduleId] = value;
+      monthObj[dk] = dayObj;
+      scheduleSaveMonth(mk, monthObj);
+      return { ...prev, [mk]: monthObj };
+    });
+  };
+
+  const saveModules = (next) => {
+    setModules(next);
+    sSet(`modules:${project.id}`, JSON.stringify(next));
+  };
+
+  if (modules === null) return <div className="tk-loading">Chargement…</div>;
+
+  return (
+    <div className="tk-project-shell">
+      <div className="tk-project-header" style={{ "--card-color": project.color }}>
+        <button type="button" className="tk-icon-btn" onClick={onBack}><ArrowLeft size={18} /></button>
+        <span className="tk-project-emoji-sm">{project.emoji}</span>
+        <span className="tk-project-header-name">{project.name}</span>
+      </div>
+
+      <div className="tk-tabs">
+        <button type="button" className={`tk-tab ${tab === "today" ? "is-active" : ""}`} onClick={() => setTab("today")}><ListChecks size={16} /> Aujourd'hui</button>
+        <button type="button" className={`tk-tab ${tab === "history" ? "is-active" : ""}`} onClick={() => setTab("history")}><CalendarRange size={16} /> Historique</button>
+        <button type="button" className={`tk-tab ${tab === "settings" ? "is-active" : ""}`} onClick={() => setTab("settings")}><Settings2 size={16} /> Réglages</button>
+      </div>
+
+      <div className="tk-tab-content">
+        {tab === "today" && (
+          <TodayView modules={modules} date={date} setDate={setDate} dayData={getDayData(date)} onValueChange={onValueChange} />
+        )}
+        {tab === "history" && (
+          <HistoryView modules={modules} date={date} setDate={setDate} setTab={setTab} getDayData={getDayData} />
+        )}
+        {tab === "settings" && (
+          <SettingsView
+            modules={modules} onModulesChange={saveModules}
+            project={project} onProjectChange={onProjectPatch}
+            onDeleteProject={onDeleteProject}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [projects, setProjects] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const raw = await sGet("projects");
+      if (raw) {
+        setProjects(JSON.parse(raw));
+      } else {
+        const perso = { id: uid("proj"), name: "Perso", emoji: "🌷", color: "#8C7AE6" };
+        await sSet("projects", JSON.stringify([perso]));
+        await sSet(`modules:${perso.id}`, JSON.stringify(defaultPersoModules()));
+        setProjects([perso]);
+      }
+    })();
+  }, []);
+
+  const persistProjects = (next) => { setProjects(next); sSet("projects", JSON.stringify(next)); };
+
+  const createProject = async (p) => {
+    const proj = { id: uid("proj"), name: p.name, emoji: p.emoji, color: p.color };
+    const next = [...projects, proj];
+    persistProjects(next);
+    await sSet(`modules:${proj.id}`, JSON.stringify([]));
+  };
+
+  const editProject = (p) => persistProjects(projects.map((x) => (x.id === p.id ? { ...x, ...p } : x)));
+
+  const deleteProject = async (id) => {
+    persistProjects(projects.filter((x) => x.id !== id));
+    await sDelete(`modules:${id}`);
+    if (selectedId === id) setSelectedId(null);
+  };
+
+  const patchSelected = (patch) => {
+    persistProjects(projects.map((x) => (x.id === selectedId ? { ...x, ...patch } : x)));
+  };
+
+  if (projects === null) {
+    return (
+      <div className="tk-app">
+        <style>{CSS}</style>
+        <div className="tk-loading">Chargement de tes suivis…</div>
+      </div>
+    );
+  }
+
+  const selected = projects.find((p) => p.id === selectedId);
+
+  return (
+    <div className="tk-app">
+      <style>{CSS}</style>
+      {!selected && (
+        <HomeScreen
+          projects={projects}
+          onOpen={(p) => setSelectedId(p.id)}
+          onCreate={createProject}
+          onEdit={editProject}
+          onDelete={deleteProject}
+        />
+      )}
+      {selected && (
+        <ProjectShell
+          project={selected}
+          onBack={() => setSelectedId(null)}
+          onProjectPatch={patchSelected}
+          onDeleteProject={() => deleteProject(selected.id)}
+        />
+      )}
+    </div>
+  );
+}
+EOF
+echo done

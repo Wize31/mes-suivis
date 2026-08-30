@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Apple,
   ArrowLeft,
   BarChart3,
   CalendarDays,
@@ -9,10 +10,13 @@ import {
   ChevronRight,
   ChevronUp,
   Download,
+  Droplet,
   Droplets,
   FileJson,
   GripVertical,
   Heart,
+  Leaf,
+  Moon,
   Pencil,
   Plus,
   Settings2,
@@ -23,6 +27,18 @@ import {
   Wine,
   X,
 } from "lucide-react";
+
+const ratingShapes = [
+  ["star", "Étoile", Star],
+  ["heart", "Cœur", Heart],
+  ["wine", "Verre de vin", Wine],
+  ["droplet", "Goutte d'eau", Droplet],
+  ["apple", "Pomme", Apple],
+  ["moon", "Lune", Moon],
+  ["leaf", "Feuille", Leaf],
+];
+const ratingIcon = (shape) =>
+  ratingShapes.find(([name]) => name === shape)?.[2] || Star;
 
 const palette = [
   "#e98585",
@@ -35,6 +51,32 @@ const palette = [
 ];
 const uid = (prefix = "id") =>
   `${prefix}-${crypto.randomUUID?.() || Date.now() + Math.random()}`;
+// Les nombres se saisissent et s'affichent avec la virgule décimale (fr-CA).
+const commaInput = (text) =>
+  String(text ?? "")
+    .replace(/\./g, ",")
+    .replace(/[^\d,-]/g, "")
+    .replace(/,(?=.*,)/g, "");
+const toNumber = (text) => {
+  const raw = String(text ?? "").trim();
+  const duration = raw.match(/^(\d*)h(\d*)$/i);
+  if (duration)
+    return Number(duration[1] || 0) + Number(duration[2] || 0) / 60;
+  const parsed = Number(raw.replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+// Durée saisie dans une seule case au format 6h23, le « h » restant toujours affiché.
+const durationInput = (text) => {
+  const raw = String(text ?? "")
+    .replace(/[:,.]/g, "h")
+    .replace(/[^\dh]/g, "");
+  const index = raw.indexOf("h");
+  const hours = (index === -1 ? raw : raw.slice(0, index)).slice(0, 2);
+  const minutes = (index === -1 ? "" : raw.slice(index + 1).replace(/h/g, "")).slice(0, 2);
+  return hours || minutes ? `${hours}h${minutes}` : "";
+};
+const commaNumber = (value) =>
+  typeof value === "number" ? String(value).replace(".", ",") : String(value ?? "");
 const pad = (n) => String(n).padStart(2, "0");
 const keyFor = (date) =>
   `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -53,6 +95,54 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 const starterModules = [
   {
     id: uid("m"),
+    title: "Cycle menstruel",
+    subtitle: "Où j'en suis aujourd'hui",
+    type: "check",
+    color: "#d98eaf",
+    options: [
+      { id: uid("o"), label: "Règles", color: "#d57474" },
+      { id: uid("o"), label: "Saignements légers", color: "#e98585" },
+      { id: uid("o"), label: "Ovulation", color: "#9f8bd0" },
+      { id: uid("o"), label: "Crampes", color: "#e39c68" },
+      { id: uid("o"), label: "Fatigue", color: "#72a9cf" },
+    ],
+  },
+  {
+    id: uid("m"),
+    title: "Travail",
+    subtitle: "Temps, pourboires et rémunération",
+    type: "number",
+    color: "#e39c68",
+    fields: [
+      { id: "heures", label: "Temps travaillé", unit: "", kind: "duration", color: palette[0] },
+      { id: "points", label: "Points de pourboire", unit: "pts", color: palette[1] },
+    ],
+    computed: [
+      {
+        id: "salaire",
+        label: "Salaire à 13,30 $/h",
+        visible: false,
+        formula: "heures * 13.30",
+        unit: "$",
+      },
+      {
+        id: "pourboires",
+        label: "Total pourboires",
+        visible: false,
+        formula: "points * 4",
+        unit: "$",
+      },
+      {
+        id: "total",
+        label: "Totale",
+        visible: true,
+        formula: "heures * 13.30 + points * 4",
+        unit: "$",
+      },
+    ],
+  },
+  {
+    id: uid("m"),
     title: "Note de la journée",
     subtitle: "Une impression globale",
     type: "rating",
@@ -69,36 +159,14 @@ const starterModules = [
   },
   {
     id: uid("m"),
-    title: "Travail",
-    subtitle: "Minutes, pourboires et rémunération",
-    type: "number",
-    color: "#e39c68",
-    fields: [
-      { id: "minutes", label: "Minutes travaillées", unit: "min", color: palette[0] },
-      { id: "points", label: "Points de pourboire", unit: "pts", color: palette[1] },
-    ],
-    computed: [
-      {
-        id: "salaire",
-        label: "Salaire à 13,30 $/h",
-        visible: false,
-        formula: "minutes / 60 * 13.30",
-        unit: "$",
-      },
-      {
-        id: "pourboires",
-        label: "Total pourboires",
-        visible: false,
-        formula: "points * 4",
-        unit: "$",
-      },
-      {
-        id: "total",
-        label: "Totale",
-        visible: true,
-        formula: "minutes / 60 * 13.30 + points * 4",
-        unit: "$",
-      },
+    title: "Santé mentale",
+    subtitle: "Comment je me sens",
+    type: "scale",
+    color: "#72a9cf",
+    anchors: [
+      { value: 0, label: "Difficile", color: "#d57474" },
+      { value: 5, label: "Correct", color: "#e7b75c" },
+      { value: 10, label: "Lumineuse", color: "#72b99a" },
     ],
   },
 ];
@@ -106,80 +174,33 @@ const starterModules = [
 const starterProject = {
   id: "premier-projet",
   name: "Premier projet",
-  emoji: "🌷",
-  color: "#d98eaf",
+  emoji: "🦋",
+  color: "#a8cfe8",
   modules: starterModules,
 };
 const normalizeState = (raw) => {
   const next = raw || { projects: [starterProject], entries: {}, savedDays: {} };
   next.savedDays = next.savedDays || {};
-  next.projects = (next.projects || []).map((project) => ({
-    ...project,
-    modules: (project.modules || []).map((module) => {
-      if (module.title !== "Travail" || module.type !== "number") return module;
-      return {
-        ...module,
-        subtitle: "Minutes, pourboires et rémunération",
-        fields: [
-          { id: "minutes", label: "Minutes travaillées", unit: "min", color: palette[0] },
-          { id: "points", label: "Points de pourboire", unit: "pts", color: palette[1] },
-        ],
-        computed: [
-          {
-            id: "salaire",
-            label: "Salaire à 13,30 $/h",
-            visible: false,
-            formula: "minutes / 60 * 13.30",
-            unit: "$",
-          },
-          {
-            id: "pourboires",
-            label: "Total pourboires",
-            visible: false,
-            formula: "points * 4",
-            unit: "$",
-          },
-          {
-            id: "total",
-            label: "Totale",
-            visible: true,
-            formula: "minutes / 60 * 13.30 + points * 4",
-            unit: "$",
-          },
-        ],
-      };
-    }),
-  }));
-  Object.entries(next.entries || {}).forEach(([key, entry]) => {
-    const work = next.projects
-      .flatMap((project) => project.modules)
-      .find((module) => module.title === "Travail");
-    if (
-      work &&
-      entry[work.id] &&
-      entry[work.id].heures !== undefined &&
-      entry[work.id].minutes === undefined
-    )
-      entry[work.id].minutes = Number(entry[work.id].heures) * 60;
-  });
+  next.projects = next.projects || [];
+  next.entries = next.entries || {};
   return next;
 };
 const migrateFlexibleNumbers = (state) => {
   const workModules = state.projects
-    .flatMap((project) => project.modules)
+    .flatMap((project) => project.modules || [])
     .filter((module) => module.title === "Travail" && module.type === "number");
   workModules.forEach((module) => {
+    module.subtitle = "Temps, pourboires et rémunération";
     module.fields = [
-      { id: "heures", label: "Heures", unit: "h", color: palette[0] },
-      { id: "minutes", label: "Minutes", unit: "min", color: palette[1] },
-      { id: "points", label: "Points de pourboire", unit: "pts", color: palette[2] },
+      { id: "heures", label: "Temps travaillé", unit: "", kind: "duration", color: palette[0] },
+      { id: "points", label: "Points de pourboire", unit: "pts", color: palette[1] },
     ];
     module.computed = [
       {
         id: "salaire",
         label: "Salaire à 13,30 $/h",
         visible: false,
-        formula: "(heures + minutes / 60) * 13.30",
+        formula: "heures * 13.30",
         unit: "$",
       },
       {
@@ -193,7 +214,7 @@ const migrateFlexibleNumbers = (state) => {
         id: "total",
         label: "Totale",
         visible: true,
-        formula: "(heures + minutes / 60) * 13.30 + points * 4",
+        formula: "heures * 13.30 + points * 4",
         unit: "$",
       },
     ];
@@ -202,12 +223,14 @@ const migrateFlexibleNumbers = (state) => {
     workModules.forEach((module) => {
       const value = entry[module.id];
       if (!value) return;
-      if (value.minutes === undefined && value.heures !== undefined) {
-        value.minutes = 0;
-      }
-      if (value.heures === undefined && value.minutes !== undefined) {
-        value.heures = Math.floor(Number(value.minutes) / 60);
-        value.minutes = Number(value.minutes) % 60;
+      // Ancien format heures + minutes séparées -> une seule durée « 6h23 ».
+      if (value.minutes !== undefined) {
+        const totalMinutes =
+          Number(value.heures || 0) * 60 + Number(value.minutes || 0);
+        value.heures = `${Math.floor(totalMinutes / 60)}h${pad(totalMinutes % 60)}`;
+        delete value.minutes;
+      } else if (typeof value.heures === "number") {
+        value.heures = `${Math.floor(value.heures)}h${pad(Math.round((value.heures % 1) * 60))}`;
       }
     }),
   );
@@ -620,7 +643,7 @@ const numberSummary = (module, value) =>
         .filter((computed) => computed.visible !== false)
         .map(
           (computed) =>
-            `${computed.label}: ${calculate(computed.formula, value, module.fields, module.computed)}${computed.unit || ""}`,
+            `${computed.label}: ${commaNumber(calculate(computed.formula, value, module.fields, module.computed))}${computed.unit || ""}`,
         )
         .join(" · ") || "vide"
     : (module.fields || [])
@@ -684,6 +707,39 @@ function TrackerCard({ module, value, open, onToggle, onChange }) {
   );
 }
 
+function DurationField({ value, onChange }) {
+  const minutesRef = useRef(null);
+  const [hours = "", minutes = ""] = durationInput(value).split("h");
+  const set = (h, m) => onChange(h || m ? `${h}h${m}` : "");
+  const digits = (text) => text.replace(/\D/g, "").slice(0, 2);
+  return (
+    <span className="duration-input">
+      <input
+        inputMode="numeric"
+        maxLength={2}
+        placeholder="00"
+        aria-label="Heures"
+        value={hours}
+        onChange={(e) => {
+          const next = digits(e.target.value);
+          set(next, minutes);
+          if (next.length === 2) minutesRef.current?.focus();
+        }}
+      />
+      <b>h</b>
+      <input
+        ref={minutesRef}
+        inputMode="numeric"
+        maxLength={2}
+        placeholder="00"
+        aria-label="Minutes"
+        value={minutes}
+        onChange={(e) => set(hours, digits(e.target.value))}
+      />
+    </span>
+  );
+}
+
 function ValueEditor({ module, value, onChange }) {
   if (module.type === "text")
     return (
@@ -697,7 +753,7 @@ function ValueEditor({ module, value, onChange }) {
   if (module.type === "rating") {
     const max = module.max || 5;
     const n = typeof value === "number" ? value : 0;
-    const RatingIcon = module.shape === "heart" ? Heart : module.shape === "wine" ? Wine : Star;
+    const RatingIcon = ratingIcon(module.shape);
     const activeLevel = module.levels?.find((level) => level.value === n);
     const activeColor = activeLevel?.color || module.color;
     return (
@@ -757,17 +813,27 @@ function ValueEditor({ module, value, onChange }) {
           <label key={f.id}>
             {f.label}
             <span>
-              <input
-                type="number"
-                step="any"
-                min="0"
-                inputMode="decimal"
-                value={value?.[f.id] ?? ""}
-                onChange={(e) =>
-                  onChange({ ...(value || {}), [f.id]: e.target.value })
-                }
-                placeholder="0"
-              />
+              {f.kind === "duration" ? (
+                <DurationField
+                  value={value?.[f.id] ?? ""}
+                  onChange={(next) =>
+                    onChange({ ...(value || {}), [f.id]: next })
+                  }
+                />
+              ) : (
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={value?.[f.id] ?? ""}
+                  onChange={(e) =>
+                    onChange({
+                      ...(value || {}),
+                      [f.id]: commaInput(e.target.value),
+                    })
+                  }
+                  placeholder="0"
+                />
+              )}
               {f.unit}
             </span>
           </label>
@@ -778,7 +844,7 @@ function ValueEditor({ module, value, onChange }) {
           <div className="calculated" key={c.id}>
             <span>{c.label}</span>
             <b>
-              {calculate(c.formula, value, module.fields, module.computed)}
+              {commaNumber(calculate(c.formula, value, module.fields, module.computed))}
               {c.unit}
             </b>
           </div>
@@ -788,25 +854,31 @@ function ValueEditor({ module, value, onChange }) {
   if (module.type === "check" && module.options) {
     const selected = Array.isArray(value) ? value : [];
     return (
-      <div className="option-list">
+      <div className="checklist">
         {module.options.map((o) => {
           const active = selected.includes(o.id);
           return (
-            <button
-              className={active ? "selected" : ""}
+            <label
+              className={`checklist-item ${active ? "is-checked" : ""}`}
               style={{ "--option": o.color }}
               key={o.id}
-              onClick={() =>
-                onChange(
-                  active
-                    ? selected.filter((id) => id !== o.id)
-                    : [...selected, o.id],
-                )
-              }
             >
-              <span />
-              <Check size={13} /> {o.label}
-            </button>
+              <input
+                type="checkbox"
+                checked={active}
+                onChange={() =>
+                  onChange(
+                    active
+                      ? selected.filter((id) => id !== o.id)
+                      : [...selected, o.id],
+                  )
+                }
+              />
+              <span className="checklist-box">
+                <Check size={15} strokeWidth={3.5} />
+              </span>
+              <span className="checklist-label">{o.label}</span>
+            </label>
           );
         })}
       </div>
@@ -827,7 +899,13 @@ function ValueEditor({ module, value, onChange }) {
       </label>
     );
   const selected =
-    module.type === "multi" ? (Array.isArray(value) ? value : []) : value;
+    module.type === "multi"
+      ? Array.isArray(value)
+        ? value
+        : []
+      : Array.isArray(value)
+        ? (value.at(-1) ?? null)
+        : value;
   return (
     <div className="option-list">
       {module.options?.map((o) => {
@@ -882,7 +960,7 @@ const calculate = (formula, value = {}, fields = [], computed = [], resolving = 
     };
     fields.forEach((field) => {
       const variableName = formulaName(field.id);
-      addVariable(field.id, variableName, Number(value[field.id] || 0));
+      addVariable(field.id, variableName, toNumber(value[field.id]));
       addVariable(field.label, variableName, variables[variableName]);
     });
     computed.forEach((item) => {
@@ -1067,7 +1145,7 @@ const valueLabel = (module, value) => {
         .filter((f) => value[f.id] !== undefined && value[f.id] !== "")
         .map((f) => `${f.label}: ${value[f.id]}${f.unit}`),
       ...(module.computed || []).map(
-        (c) => `${c.label}: ${calculate(c.formula, value, module.fields, module.computed)}${c.unit}`,
+        (c) => `${c.label}: ${commaNumber(calculate(c.formula, value, module.fields, module.computed))}${c.unit}`,
       ),
     ].join(" · ");
   return String(value);
@@ -1077,7 +1155,7 @@ const historyValueLabel = (module, value) => {
     if (!value || !Object.values(value).some((item) => item !== "" && item !== undefined)) return "";
     return (module.computed || [])
       .filter((computed) => ["salaire", "pourboires", "total"].includes(computed.id))
-      .map((computed) => `${computed.id === "salaire" ? "Salaire" : computed.label}: ${calculate(computed.formula, value, module.fields, module.computed)}${computed.unit}`)
+      .map((computed) => `${computed.id === "salaire" ? "Salaire" : computed.label}: ${commaNumber(calculate(computed.formula, value, module.fields, module.computed))}${computed.unit}`)
       .join(" · ");
   }
   return valueLabel(module, value);
@@ -1500,8 +1578,8 @@ const workTotals = (module, values) => {
   const totalComputed = module.computed?.find((computed) => computed.id === "total");
   return values.reduce(
     (totals, value) => {
-      const hours = Number(value?.heures || 0) + Number(value?.minutes || 0) / 60;
-      const tips = Number(value?.points || 0) * 4;
+      const hours = toNumber(value?.heures) + toNumber(value?.minutes) / 60;
+      const tips = toNumber(value?.points) * 4;
       const total = Number(calculate(totalComputed?.formula || "0", value, module.fields, module.computed));
       return {
         hours: totals.hours + hours,
@@ -1517,7 +1595,7 @@ const numberFieldTotals = (module, values) =>
     label: field.label,
     unit: field.unit || "",
     color: field.color || palette[index % palette.length],
-    total: values.reduce((sum, value) => sum + Number(value?.[field.id] || 0), 0),
+    total: values.reduce((sum, value) => sum + toNumber(value?.[field.id]), 0),
   }));
 const numberPieGradient = (totals) => {
   const total = totals.reduce((sum, item) => sum + item.total, 0);
@@ -1835,9 +1913,27 @@ function YearView({ project, year, entries, selectedModules, onPick }) {
 function Settings({ project, onProject, onClose, onDelete }) {
   const [editing, setEditing] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
+  const [undoDepth, setUndoDepth] = useState(0);
+  const undoStack = useRef([]);
   const pressTimer = useRef(null);
+  // Snapshot des suivis avant chaque action structurelle (ajout, suppression, réordonnancement).
+  const applyModules = (modules) => {
+    undoStack.current = [...undoStack.current, project.modules];
+    setUndoDepth(undoStack.current.length);
+    onProject({ modules });
+  };
+  const openEditor = (id) => {
+    undoStack.current = [...undoStack.current, project.modules];
+    setUndoDepth(undoStack.current.length);
+    setEditing(id);
+  };
   const patchModule = (m) =>
     onProject({ modules: project.modules.map((x) => (x.id === m.id ? m : x)) });
+  const undoLastAction = () => {
+    const previous = undoStack.current.pop();
+    setUndoDepth(undoStack.current.length);
+    if (previous) onProject({ modules: previous });
+  };
   const stopDragging = () => {
     clearTimeout(pressTimer.current);
     pressTimer.current = null;
@@ -1863,7 +1959,7 @@ function Settings({ project, onProject, onClose, onDelete }) {
     const modules = [...project.modules];
     const [moved] = modules.splice(fromIndex, 1);
     modules.splice(toIndex, 0, moved);
-    onProject({ modules });
+    applyModules(modules);
   };
   const add = (type) => {
     const m =
@@ -1925,11 +2021,27 @@ function Settings({ project, onProject, onClose, onDelete }) {
     if (type === "hour" || type === "money") {
       m.type = "number";
       m.title = type === "hour" ? "Nouveau suivi d'heure" : "Nouveau suivi en dollars";
-      m.fields = [{ id: uid("field"), label: type === "hour" ? "Durée" : "Montant", unit: type === "hour" ? "h" : "$", color: palette[0] }];
+      m.fields =
+        type === "hour"
+          ? [
+              {
+                id: uid("field"),
+                label: "Temps",
+                unit: "",
+                kind: "duration",
+                color: palette[0],
+              },
+            ]
+          : [{ id: uid("field"), label: "Montant", unit: "$", color: palette[0] }];
       m.computed = [];
     }
-    onProject({ modules: [...project.modules, m] });
+    applyModules([...project.modules, m]);
     setEditing(m.id);
+  };
+  const removeModule = (m) => {
+    if (!confirm(`Supprimer le suivi « ${m.title} » ?`)) return;
+    applyModules(project.modules.filter((x) => x.id !== m.id));
+    setEditing(null);
   };
   return (
     <div className="drawer-backdrop" onClick={onClose}>
@@ -1986,12 +2098,7 @@ function Settings({ project, onProject, onClose, onDelete }) {
                 module={m}
                 onChange={patchModule}
                 onClose={() => setEditing(null)}
-                onDelete={() => {
-                  onProject({
-                    modules: project.modules.filter((x) => x.id !== m.id),
-                  });
-                  setEditing(null);
-                }}
+                onDelete={() => removeModule(m)}
               />
             ) : (
               <div
@@ -2008,7 +2115,7 @@ function Settings({ project, onProject, onClose, onDelete }) {
                 >
                   <GripVertical size={16} aria-hidden="true" />
                 </span>
-                <button className="module-setting-main" onClick={() => setEditing(m.id)}>
+                <button className="module-setting-main" onClick={() => openEditor(m.id)}>
                   <span className="tracker-dot" />
                   <strong>{m.title}</strong>
                   <small>
@@ -2021,6 +2128,14 @@ function Settings({ project, onProject, onClose, onDelete }) {
                         : m.type}
                   </small>
                   <Pencil size={15} />
+                </button>
+                <button
+                  className="module-setting-delete"
+                  onClick={() => removeModule(m)}
+                  aria-label={`Supprimer ${m.title}`}
+                  title="Supprimer ce suivi"
+                >
+                  <Trash2 size={15} />
                 </button>
               </div>
             )}
@@ -2055,6 +2170,13 @@ function Settings({ project, onProject, onClose, onDelete }) {
             <Plus size={16} /> texte
           </button>
         </div>
+        <button
+          className="undo-action"
+          onClick={undoLastAction}
+          disabled={!undoDepth}
+        >
+          <Undo2 size={15} /> Annuler
+        </button>
         <button
           className="delete-project"
           onClick={() => {
@@ -2149,11 +2271,7 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
         <div className="edit-options">
           <div className="settings-label">Forme de la note</div>
           <div className="rating-shape-picker">
-            {[
-              ["star", "Étoile", Star],
-              ["heart", "Cœur", Heart],
-              ["wine", "Verre de vin", Wine],
-            ].map(([shape, label, Icon]) => (
+            {ratingShapes.map(([shape, label, Icon]) => (
               <button
                 key={shape}
                 className={module.shape === shape || (!module.shape && shape === "star") ? "active" : ""}
@@ -2404,6 +2522,18 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
                   })
                 }
               />
+              <input
+                className="formula-unit"
+                value={c.unit || ""}
+                onChange={(e) =>
+                  patch({
+                    computed: module.computed.map((x) =>
+                      x.id === c.id ? { ...x, unit: e.target.value } : x,
+                    ),
+                  })
+                }
+                placeholder="unité"
+              />
             </label>
           ))}
           <button
@@ -2416,7 +2546,7 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
                     id: uid("c"),
                     label: "Nouveau calcul",
                     formula: "minutes * 1",
-                    unit: "$",
+                    unit: "",
                   },
                 ],
               })
