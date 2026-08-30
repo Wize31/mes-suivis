@@ -2007,6 +2007,7 @@ function Settings({ project, onProject, onClose, onDelete }) {
                   }
               : type === "number"
                 ? {
+                    preset: "number",
                     fields: [{ id: "valeur", label: "Valeur", unit: "", color: palette[0] }],
                     computed: [],
                   }
@@ -2020,6 +2021,7 @@ function Settings({ project, onProject, onClose, onDelete }) {
           };
     if (type === "hour" || type === "money") {
       m.type = "number";
+      m.preset = type;
       m.title = type === "hour" ? "Nouveau suivi d'heure" : "Nouveau suivi en dollars";
       m.fields =
         type === "hour"
@@ -2217,6 +2219,9 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
     patch({
       fields: module.fields.map((f) => (f.id === id ? { ...f, ...p } : f)),
     });
+  // undefined = l'utilisateur choisit le format, sinon il découle du type de suivi choisi.
+  const presetFieldKind =
+    module.preset === "hour" ? "duration" : module.preset ? null : undefined;
   const stopDraggingOption = () => {
     clearTimeout(optionPressTimer.current);
     optionPressTimer.current = null;
@@ -2352,19 +2357,21 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
                 onChange={(e) => patchField(f.id, { unit: e.target.value })}
                 placeholder="unité"
               />
-              <select
-                className="field-kind"
-                value={f.kind === "duration" ? "duration" : "number"}
-                onChange={(e) =>
-                  patchField(f.id, {
-                    kind: e.target.value === "duration" ? "duration" : null,
-                  })
-                }
-                aria-label={`Format de ${f.label}`}
-              >
-                <option value="number">Chiffre</option>
-                <option value="duration">Durée</option>
-              </select>
+              {presetFieldKind === undefined && (
+                <select
+                  className="field-kind"
+                  value={f.kind === "duration" ? "duration" : "number"}
+                  onChange={(e) =>
+                    patchField(f.id, {
+                      kind: e.target.value === "duration" ? "duration" : null,
+                    })
+                  }
+                  aria-label={`Format de ${f.label}`}
+                >
+                  <option value="number">Chiffre</option>
+                  <option value="duration">Durée</option>
+                </select>
+              )}
               <button
                 onClick={() =>
                   patch({ fields: module.fields.filter((x) => x.id !== f.id) })
@@ -2380,7 +2387,13 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
               patch({
                 fields: [
                   ...module.fields,
-                  { id: uid("field"), label: "Nouveau sous-champ", unit: "", color: palette[module.fields.length % palette.length] },
+                  {
+                    id: uid("field"),
+                    label: "Nouveau sous-champ",
+                    unit: "",
+                    kind: presetFieldKind ?? null,
+                    color: palette[module.fields.length % palette.length],
+                  },
                 ],
               })
             }
