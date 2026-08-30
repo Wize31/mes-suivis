@@ -108,23 +108,13 @@ const starterProject = {
   name: "Premier projet",
   emoji: "🌷",
   color: "#d98eaf",
-  createdAt: new Date().toISOString(),
   modules: starterModules,
-};
-const earliestEntryDate = (project, entries) => {
-  const dates = Object.keys(entries || {})
-    .filter((key) => key.startsWith(`${project.id}:`) && Object.keys(entries[key]).length)
-    .map((key) => key.split(":")[1])
-    .sort();
-  return dates.length ? new Date(`${dates[0]}T12:00:00`).toISOString() : new Date().toISOString();
 };
 const normalizeState = (raw) => {
   const next = raw || { projects: [starterProject], entries: {}, savedDays: {} };
   next.savedDays = next.savedDays || {};
-  next.entries = next.entries || {};
   next.projects = (next.projects || []).map((project) => ({
     ...project,
-    createdAt: project.createdAt || earliestEntryDate(project, next.entries),
     modules: (project.modules || []).map((module) => {
       if (module.title !== "Travail" || module.type !== "number") return module;
       return {
@@ -238,41 +228,12 @@ const persistState = (next) => {
   } catch {
   }
 };
-const loadUserName = () => {
-  try {
-    return localStorage.getItem("mes-suivis-name");
-  } catch {
-    return null;
-  }
-};
-const persistUserName = (name) => {
-  try {
-    localStorage.setItem("mes-suivis-name", name);
-  } catch {
-  }
-};
 
 function App() {
   const [state, setState] = useState(loadState);
   const [projectId, setProjectId] = useState(null);
   const [date, setDate] = useState(new Date());
   const [view, setView] = useState("today");
-  const [userName, setUserName] = useState(() => loadUserName() || "");
-  const [nameAsked, setNameAsked] = useState(() => loadUserName() !== null);
-  const [darkMode, setDarkMode] = useState(() => {
-    try {
-      return localStorage.getItem("mes-suivis-theme") === "dark";
-    } catch {
-      return false;
-    }
-  });
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", darkMode);
-    try {
-      localStorage.setItem("mes-suivis-theme", darkMode ? "dark" : "light");
-    } catch {
-    }
-  }, [darkMode]);
   useEffect(() => {
     persistState(state);
     const flush = () => persistState(state);
@@ -322,29 +283,11 @@ function App() {
     });
   if (!project)
     return (
-      <>
-        {!nameAsked && (
-          <NamePrompt
-            onSave={(name) => {
-              persistUserName(name);
-              setUserName(name);
-              setNameAsked(true);
-            }}
-          />
-        )}
-        <Home
-          userName={userName}
-          onUpdateName={(name) => {
-            persistUserName(name);
-            setUserName(name);
-          }}
-          darkMode={darkMode}
-          onToggleDarkMode={setDarkMode}
-          projects={state.projects}
-          entries={state.entries}
-          onOpen={setProjectId}
+      <Home
+        projects={state.projects}
+        onOpen={setProjectId}
         onCreate={(p) => {
-          const next = { ...p, id: uid("project"), modules: [], createdAt: new Date().toISOString() };
+          const next = { ...p, id: uid("project"), modules: [] };
           setState((s) => ({ ...s, projects: [...s.projects, next] }));
         }}
         onDelete={(id) =>
@@ -353,15 +296,7 @@ function App() {
             projects: s.projects.filter((p) => p.id !== id),
           }))
         }
-        onReorder={(projects) =>
-          setState((s) => {
-            const next = { ...s, projects };
-            persistState(next);
-            return next;
-          })
-        }
-        />
-      </>
+      />
     );
   const entry = state.entries[`${projectId}:${keyFor(date)}`] || {};
   return (
@@ -389,66 +324,17 @@ function App() {
   );
 }
 
-const lastEntryDate = (project, entries) => {
-  const dates = Object.keys(entries || {})
-    .filter((key) => key.startsWith(`${project.id}:`) && Object.keys(entries[key]).length)
-    .map((key) => key.split(":")[1])
-    .sort();
-  return dates.length ? dates[dates.length - 1] : null;
-};
-const shortDate = (isoOrKey) =>
-  new Intl.DateTimeFormat("fr-CA", { day: "numeric", month: "short", year: "numeric" }).format(
-    isoOrKey.includes("T") ? new Date(isoOrKey) : new Date(`${isoOrKey}T12:00:00`),
-  );
-function Home({ userName, onUpdateName, darkMode, onToggleDarkMode, projects, entries, onOpen, onCreate, onDelete, onReorder }) {
+function Home({ projects, onOpen, onCreate, onDelete }) {
   const [modal, setModal] = useState(false);
-  const [appSettings, setAppSettings] = useState(false);
-  const [draggingId, setDraggingId] = useState(null);
-  const pressTimer = useRef(null);
-  const stopDragging = () => {
-    clearTimeout(pressTimer.current);
-    pressTimer.current = null;
-    setDraggingId(null);
-  };
-  const startDragging = (event, id) => {
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    clearTimeout(pressTimer.current);
-    pressTimer.current = setTimeout(() => setDraggingId(id), 250);
-  };
-  const moveDraggedProject = (event) => {
-    if (!draggingId) return;
-    event.preventDefault();
-    const target = document
-      .elementFromPoint(event.clientX, event.clientY)
-      ?.closest(".project-tile[data-project-id]");
-    const targetId = target?.dataset.projectId;
-    if (!targetId || targetId === draggingId) return;
-    const fromIndex = projects.findIndex((project) => project.id === draggingId);
-    const toIndex = projects.findIndex((project) => project.id === targetId);
-    if (fromIndex < 0 || toIndex < 0) return;
-    const next = [...projects];
-    const [moved] = next.splice(fromIndex, 1);
-    next.splice(toIndex, 0, moved);
-    onReorder(next);
-  };
   return (
     <main className="home page-width">
       <div className="brand-mark">
         <Sparkles size={18} /> mes suivis
-        <button
-          className="icon-button home-settings"
-          onClick={() => setAppSettings(true)}
-          aria-label="Réglages du profil"
-          title="Réglages du profil"
-        >
-          <Settings2 size={19} />
-        </button>
       </div>
       <header className="home-head">
         <div>
           <h1>
-            Qu'est-ce qu'on suit{userName ? ` ${userName}` : ""}
+            Qu'est-ce qu'on suit
             <br />
             <em>aujourd'hui ?</em>
           </h1>
@@ -475,51 +361,29 @@ function Home({ userName, onUpdateName, darkMode, onToggleDarkMode, projects, en
           </span>
         </div>
         <div className="project-grid">
-          {projects.map((p) => {
-            const lastEntry = lastEntryDate(p, entries);
-            return (
-              <article
-                className={`project-tile ${draggingId === p.id ? "is-dragging" : ""}`}
-                style={{ "--accent": p.color }}
-                data-project-id={p.id}
-                key={p.id}
+          {projects.map((p) => (
+            <article
+              className="project-tile"
+              style={{ "--accent": p.color }}
+              key={p.id}
+            >
+              <button className="tile-main" onClick={() => onOpen(p.id)}>
+                <span className="tile-emoji">{p.emoji}</span>
+                <strong>{p.name}</strong>
+                <small>{p.modules.length} suivis configurés</small>
+              </button>
+              <button
+                className="tile-delete"
+                aria-label={`Supprimer ${p.name}`}
+                onClick={() => {
+                  if (confirm(`Supprimer le projet « ${p.name} » ?`))
+                    onDelete(p.id);
+                }}
               >
-                <span
-                  className="tile-drag-handle"
-                  onPointerDown={(event) => startDragging(event, p.id)}
-                  onPointerMove={moveDraggedProject}
-                  onPointerUp={stopDragging}
-                  onPointerCancel={stopDragging}
-                  aria-label={`Déplacer ${p.name}`}
-                  title="Maintenir et faire glisser"
-                >
-                  <GripVertical size={15} aria-hidden="true" />
-                </span>
-                <button className="tile-main" onClick={() => onOpen(p.id)}>
-                  <span className="tile-title-row">
-                    <span className="tile-emoji">{p.emoji}</span>
-                    <strong>{p.name}</strong>
-                  </span>
-                  <small>{p.modules.length} suivis configurés</small>
-                  <small className="tile-dates">
-                    Créé le {shortDate(p.createdAt || new Date().toISOString())}
-                    <br />
-                    {lastEntry ? `Dernière entrée le ${shortDate(lastEntry)}` : "Aucune entrée"}
-                  </small>
-                </button>
-                <button
-                  className="tile-delete"
-                  aria-label={`Supprimer ${p.name}`}
-                  onClick={() => {
-                    if (confirm(`Supprimer le projet « ${p.name} » ?`))
-                      onDelete(p.id);
-                  }}
-                >
-                  <Trash2 size={15} />
-                </button>
-              </article>
-            );
-          })}
+                <Trash2 size={15} />
+              </button>
+            </article>
+          ))}
           <button className="new-project" onClick={() => setModal(true)}>
             <span>
               <Plus />
@@ -535,18 +399,6 @@ function Home({ userName, onUpdateName, darkMode, onToggleDarkMode, projects, en
           onSave={(p) => {
             onCreate(p);
             setModal(false);
-          }}
-        />
-      )}
-      {appSettings && (
-        <AppSettingsModal
-          userName={userName}
-          darkMode={darkMode}
-          onToggleDarkMode={onToggleDarkMode}
-          onClose={() => setAppSettings(false)}
-          onSave={(name) => {
-            onUpdateName(name);
-            setAppSettings(false);
           }}
         />
       )}
@@ -1808,7 +1660,6 @@ function StatCard({ module, rows, totalDays, trackedDays, chartMode }) {
               <i
                 style={{
                   width: `${Math.min((bucket.count / totalDays) * 100, 100)}%`,
-                  background: chartColor(module, bucket.label),
                 }}
               />
             </div>
@@ -1871,15 +1722,6 @@ function Settings({ project, onProject, onClose, onDelete }) {
   const [editing, setEditing] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
   const pressTimer = useRef(null);
-  const projectHistory = useRef([]);
-  const mutateProject = (patch) => {
-    projectHistory.current.push(project);
-    onProject(patch);
-  };
-  const undoProjectChange = () => {
-    if (!projectHistory.current.length) return;
-    onProject(projectHistory.current.pop());
-  };
   const patchModule = (m) =>
     onProject({ modules: project.modules.map((x) => (x.id === m.id ? m : x)) });
   const stopDragging = () => {
@@ -1907,7 +1749,7 @@ function Settings({ project, onProject, onClose, onDelete }) {
     const modules = [...project.modules];
     const [moved] = modules.splice(fromIndex, 1);
     modules.splice(toIndex, 0, moved);
-    mutateProject({ modules });
+    onProject({ modules });
   };
   const add = (type) => {
     const m =
@@ -1972,12 +1814,8 @@ function Settings({ project, onProject, onClose, onDelete }) {
       m.fields = [{ id: uid("field"), label: type === "hour" ? "Durée" : "Montant", unit: type === "hour" ? "h" : "$", color: palette[0] }];
       m.computed = [];
     }
-    mutateProject({ modules: [...project.modules, m] });
+    onProject({ modules: [...project.modules, m] });
     setEditing(m.id);
-  };
-  const deleteModule = (id) => {
-    mutateProject({ modules: project.modules.filter((x) => x.id !== id) });
-    if (editing === id) setEditing(null);
   };
   return (
     <div className="drawer-backdrop" onClick={onClose}>
@@ -1992,28 +1830,16 @@ function Settings({ project, onProject, onClose, onDelete }) {
           </button>
         </div>
         <label className="project-edit">
-          <span>Nom du projet</span>
+          <span>Projet</span>
           <input
             value={project.name}
             onChange={(e) => onProject({ name: e.target.value })}
           />
-        </label>
-        <label className="project-edit">
-          <span>Icône du projet</span>
           <input
             className="emoji-input"
             value={project.emoji}
             onChange={(e) => onProject({ emoji: e.target.value })}
             maxLength="2"
-          />
-        </label>
-        <label className="project-edit">
-          <span>Couleur du projet</span>
-          <input
-            className="color-input"
-            type="color"
-            value={project.color}
-            onChange={(e) => onProject({ color: e.target.value })}
           />
         </label>
         <div className="settings-label">Tes suivis</div>
@@ -2029,7 +1855,12 @@ function Settings({ project, onProject, onClose, onDelete }) {
                 module={m}
                 onChange={patchModule}
                 onClose={() => setEditing(null)}
-                onDelete={() => deleteModule(m.id)}
+                onDelete={() => {
+                  onProject({
+                    modules: project.modules.filter((x) => x.id !== m.id),
+                  });
+                  setEditing(null);
+                }}
               />
             ) : (
               <div
@@ -2059,16 +1890,6 @@ function Settings({ project, onProject, onClose, onDelete }) {
                         : m.type}
                   </small>
                   <Pencil size={15} />
-                </button>
-                <button
-                  className="module-quick-delete"
-                  aria-label={`Supprimer ${m.title}`}
-                  title="Supprimer ce suivi"
-                  onClick={() => {
-                    if (confirm(`Supprimer le suivi « ${m.title} » ?`)) deleteModule(m.id);
-                  }}
-                >
-                  <Trash2 size={15} />
                 </button>
               </div>
             )}
@@ -2103,25 +1924,14 @@ function Settings({ project, onProject, onClose, onDelete }) {
             <Plus size={16} /> texte
           </button>
         </div>
-        <div className="settings-bottom-actions">
-          <button
-            className="delete-project"
-            onClick={() => {
-              if (confirm("Supprimer ce projet ?")) onDelete();
-            }}
-          >
-            <Trash2 size={15} /> Supprimer le projet
-          </button>
-          <button
-            className="undo-small"
-            onClick={undoProjectChange}
-            disabled={!projectHistory.current.length}
-            aria-label="Revenir à la modification précédente"
-            title="Annuler la dernière modification"
-          >
-            <Undo2 size={16} />
-          </button>
-        </div>
+        <button
+          className="delete-project"
+          onClick={() => {
+            if (confirm("Supprimer ce projet ?")) onDelete();
+          }}
+        >
+          <Trash2 size={15} /> Supprimer le projet
+        </button>
       </aside>
     </div>
   );
@@ -2131,23 +1941,9 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
   const [draggingOptionId, setDraggingOptionId] = useState(null);
   const optionPressTimer = useRef(null);
   const moduleHistory = useRef([]);
-  const [maxDraft, setMaxDraft] = useState(String(module.max || 5));
-  useEffect(() => {
-    setMaxDraft(String(module.max || 5));
-  }, [module.id]);
   const patch = (p) => {
     moduleHistory.current.push(module);
     onChange({ ...module, ...p });
-  };
-  const commitMax = () => {
-    const max = Math.min(10, Math.max(2, Number(maxDraft) || module.max || 5));
-    setMaxDraft(String(max));
-    const levels = Array.from({ length: max }, (_, i) => ({
-      value: i + 1,
-      label: module.levels?.[i]?.label || "",
-      color: module.levels?.[i]?.color || palette[i % palette.length],
-    }));
-    patch({ max, levels });
   };
   const undoLastChange = () => {
     if (!moduleHistory.current.length) return;
@@ -2240,14 +2036,15 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
               type="number"
               min="2"
               max="10"
-              value={maxDraft}
-              onChange={(e) => setMaxDraft(e.target.value)}
-              onBlur={commitMax}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  commitMax();
-                  e.target.blur();
-                }
+              value={module.max || 5}
+              onChange={(e) => {
+                const max = Math.min(10, Math.max(2, Number(e.target.value) || 5));
+                const levels = Array.from({ length: max }, (_, i) => ({
+                  value: i + 1,
+                  label: module.levels?.[i]?.label || "",
+                  color: module.levels?.[i]?.color || palette[i % palette.length],
+                }));
+                patch({ max, levels });
               }}
             />
           </label>
@@ -2498,7 +2295,7 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
       )}
       <div className="editor-actions">
         <button className="delete-small" onClick={onDelete}>
-          <Trash2 size={14} /> Supprimer ce suivi
+          <Trash2 size={14} /> Supprimer
         </button>
         <button
           className="undo-small"
@@ -2517,77 +2314,9 @@ function ModuleEditor({ module, onChange, onClose, onDelete }) {
   );
 }
 
-function NamePrompt({ onSave }) {
-  const [name, setName] = useState("");
-  return (
-    <div className="modal-backdrop">
-      <div className="modal">
-        <p className="eyebrow">bienvenue</p>
-        <h2>Comment devons-nous t'appeler ?</h2>
-        <div className="modal-fields">
-          <input
-            className="name-input"
-            autoFocus
-            placeholder="Ton prénom"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") onSave(name.trim());
-            }}
-          />
-        </div>
-        <div className="modal-actions">
-          <button className="done" onClick={() => onSave(name.trim())}>
-            Continuer
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AppSettingsModal({ userName, darkMode, onToggleDarkMode, onClose, onSave }) {
-  const [name, setName] = useState(userName || "");
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <p className="eyebrow">réglages</p>
-        <h2>Ton prénom</h2>
-        <div className="modal-fields">
-          <input
-            className="name-input"
-            autoFocus
-            placeholder="Ton prénom"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") onSave(name.trim());
-            }}
-          />
-        </div>
-        <label className="dark-mode-toggle">
-          <span>Mode sombre</span>
-          <input
-            type="checkbox"
-            checked={darkMode}
-            onChange={(e) => onToggleDarkMode(e.target.checked)}
-          />
-        </label>
-        <div className="modal-actions">
-          <button onClick={onClose}>Annuler</button>
-          <button className="done" onClick={() => onSave(name.trim())}>
-            Enregistrer
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ProjectModal({ onClose, onSave }) {
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("✨");
-  const [color, setColor] = useState(palette[4]);
   return (
     <div className="modal-backdrop">
       <div className="modal">
@@ -2600,19 +2329,10 @@ function ProjectModal({ onClose, onSave }) {
             maxLength="2"
           />
           <input
-            className="name-input"
             autoFocus
             placeholder="Nom du projet"
             value={name}
             onChange={(e) => setName(e.target.value)}
-          />
-          <input
-            className="color-input"
-            type="color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            aria-label="Couleur du projet"
-            title="Couleur du projet"
           />
         </div>
         <div className="modal-actions">
@@ -2621,7 +2341,7 @@ function ProjectModal({ onClose, onSave }) {
             className="done"
             disabled={!name.trim()}
             onClick={() =>
-              onSave({ name: name.trim(), emoji, color })
+              onSave({ name: name.trim(), emoji, color: palette[4] })
             }
           >
             Créer
